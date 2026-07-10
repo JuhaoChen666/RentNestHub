@@ -26,6 +26,18 @@ go.work.sum
 
 # env file
 .env
+.env.local
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Runtime uploads
+uploads/*
+!uploads/.gitkeep
+
+# macOS
+.DS_Store
 
 # Editor/IDE
 # .idea/
