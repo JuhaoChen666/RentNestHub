@@ -118,7 +118,7 @@ func (api *API) recommend(writer http.ResponseWriter, request *http.Request) {
 	}
 	writeJSON(writer, http.StatusOK, map[string]any{
 		"items": result,
-		"mode":  "local-ranking",
+		"mode":  api.recommender.Mode(),
 	})
 }
 

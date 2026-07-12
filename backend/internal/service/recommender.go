@@ -35,9 +35,14 @@ type RecommendationProvider interface {
 		request domain.RecommendationRequest,
 		limit int,
 	) ([]domain.Recommendation, error)
+	Mode() string
 }
 
 type LocalRecommendationProvider struct{}
+
+func (LocalRecommendationProvider) Mode() string {
+	return "local-ranking"
+}
 
 func (LocalRecommendationProvider) Recommend(
 	_ context.Context,
@@ -91,6 +96,10 @@ func (service *RecommenderService) Recommend(
 	}
 
 	return service.provider.Recommend(ctx, houses, request, limit)
+}
+
+func (service *RecommenderService) Mode() string {
+	return service.provider.Mode()
 }
 
 func scoreHouse(

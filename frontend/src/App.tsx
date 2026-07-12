@@ -43,7 +43,13 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import type { House, HouseFilters, ListingMeta, Recommendation } from "./types";
+import type {
+  House,
+  HouseFilters,
+  ListingMeta,
+  Recommendation,
+  RecommendationResult,
+} from "./types";
 
 const fallbackImage =
   "https://images.unsplash.com/photo-1560185008-b033106af5c3?auto=format&fit=crop&w=1200&q=80";
@@ -69,6 +75,7 @@ function App() {
   const [houses, setHouses] = useState<House[]>([]);
   const [listingMeta, setListingMeta] = useState(initialListingMeta);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+  const [recommendationMode, setRecommendationMode] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
@@ -118,6 +125,7 @@ function App() {
   async function handleSearch(event: FormEvent) {
     event.preventDefault();
     setActiveView("browse");
+    setRecommendationMode("");
     await loadHouses(filters, 0);
   }
 
@@ -218,8 +226,9 @@ function App() {
             </p>
             <RecommendationForm
               filters={filters}
-              onComplete={(items) => {
-                setRecommendations(items);
+              onComplete={(result) => {
+                setRecommendations(result.items);
+                setRecommendationMode(result.mode);
                 setActiveView("recommend");
               }}
               onError={setError}
@@ -237,6 +246,11 @@ function App() {
                     ? `${visibleHouses.length} 套可选房源`
                     : "根据你的需求排序"}
                 </h2>
+                {activeView === "recommend" && recommendationMode && (
+                  <Badge className="recommend-mode-badge">
+                    {recommendationModeLabel(recommendationMode)}
+                  </Badge>
+                )}
               </div>
               {activeView === "recommend" && (
                 <Button
@@ -406,7 +420,7 @@ function RecommendationForm({
   onError,
 }: {
   filters: HouseFilters;
-  onComplete: (items: Recommendation[]) => void;
+  onComplete: (result: RecommendationResult) => void;
   onError: (message: string) => void;
 }) {
   const [need, setNeed] = useState(
@@ -457,6 +471,10 @@ function RecommendationForm({
       </Button>
     </form>
   );
+}
+
+function recommendationModeLabel(mode: string) {
+  return mode === "ai-http" ? "AI 服务推荐" : "本地规则推荐";
 }
 
 function HouseCard({

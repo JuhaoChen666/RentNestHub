@@ -370,6 +370,12 @@ h1 {
   font-size: 22px;
 }
 
+.recommend-mode-badge {
+  margin-top: 8px;
+  color: var(--green-dark);
+  background: var(--green-soft);
+}
+
 .text-button {
   padding: 0;
   color: var(--green);

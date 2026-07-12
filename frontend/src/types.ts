@@ -42,3 +42,8 @@ export interface Recommendation {
   score: number;
   reason: string;
 }
+
+export interface RecommendationResult {
+  items: Recommendation[];
+  mode: string;
+}
