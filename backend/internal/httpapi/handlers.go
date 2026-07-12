@@ -17,7 +17,12 @@ import (
 	"github.com/JuhaoChen666/RentNestHub/backend/internal/repository/mysqlrepo"
 )
 
-const maxUploadSize = 20 << 20
+const (
+	maxUploadSize = 20 << 20
+	maxImageFiles = 8
+	maxImageSize  = 5 << 20
+	sniffSize     = 512
+)
 
 func (api *API) listHouses(writer http.ResponseWriter, request *http.Request) {
 	query := request.URL.Query()
@@ -200,8 +205,8 @@ func houseFromForm(form *multipart.Form) (domain.House, error) {
 }
 
 func (api *API) saveImages(files []*multipart.FileHeader) ([]string, error) {
-	if len(files) > 8 {
-		return nil, errors.New("a house can contain at most 8 images")
+	if len(files) > maxImageFiles {
+		return nil, fmt.Errorf("a house can contain at most %d images", maxImageFiles)
 	}
 	if err := os.MkdirAll(api.uploadDir, 0o755); err != nil {
 		return nil, err
@@ -209,39 +214,73 @@ func (api *API) saveImages(files []*multipart.FileHeader) ([]string, error) {
 
 	urls := make([]string, 0, len(files))
 	for index, header := range files {
-		contentType := header.Header.Get("Content-Type")
-		extension := map[string]string{
-			"image/jpeg": ".jpg",
-			"image/png":  ".png",
-			"image/webp": ".webp",
-		}[contentType]
-		if extension == "" {
-			return nil, fmt.Errorf("unsupported image type: %s", contentType)
+		if header.Size <= 0 {
+			return nil, fmt.Errorf("%s is empty", header.Filename)
+		}
+		if header.Size > maxImageSize {
+			return nil, fmt.Errorf("%s exceeds the 5 MB image limit", header.Filename)
 		}
 
 		source, err := header.Open()
 		if err != nil {
 			return nil, err
 		}
+		sniff := make([]byte, sniffSize)
+		n, readErr := io.ReadFull(source, sniff)
+		if readErr != nil && !errors.Is(readErr, io.ErrUnexpectedEOF) && !errors.Is(readErr, io.EOF) {
+			source.Close()
+			return nil, readErr
+		}
+		if n == 0 {
+			source.Close()
+			return nil, fmt.Errorf("%s is empty", header.Filename)
+		}
+
+		extension, ok := detectImageExtension(sniff[:n])
+		if !ok {
+			source.Close()
+			return nil, fmt.Errorf("%s must be a JPEG, PNG, or WebP image", header.Filename)
+		}
+
 		filename := fmt.Sprintf("%d-%d%s", time.Now().UnixNano(), index, extension)
-		target, err := os.OpenFile(
-			filepath.Join(api.uploadDir, filename),
-			os.O_WRONLY|os.O_CREATE|os.O_EXCL,
-			0o644,
-		)
+		path := filepath.Join(api.uploadDir, filename)
+		target, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 		if err != nil {
 			source.Close()
 			return nil, err
 		}
-		_, copyErr := io.Copy(target, source)
+		_, writeErr := target.Write(sniff[:n])
+		written, copyErr := io.Copy(target, io.LimitReader(source, maxImageSize-int64(n)+1))
 		source.Close()
 		target.Close()
+		if writeErr != nil {
+			_ = os.Remove(path)
+			return nil, writeErr
+		}
 		if copyErr != nil {
+			_ = os.Remove(path)
 			return nil, copyErr
+		}
+		if int64(n)+written > maxImageSize {
+			_ = os.Remove(path)
+			return nil, fmt.Errorf("%s exceeds the 5 MB image limit", header.Filename)
 		}
 		urls = append(urls, strings.TrimRight(api.publicBaseURL, "/")+"/uploads/"+filename)
 	}
 	return urls, nil
+}
+
+func detectImageExtension(sample []byte) (string, bool) {
+	switch http.DetectContentType(sample) {
+	case "image/jpeg":
+		return ".jpg", true
+	case "image/png":
+		return ".png", true
+	case "image/webp":
+		return ".webp", true
+	default:
+		return "", false
+	}
 }
 
 func decodeJSON(request *http.Request, target any) error {
