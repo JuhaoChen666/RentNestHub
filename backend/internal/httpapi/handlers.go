@@ -235,7 +235,7 @@ func (api *API) saveImages(files []*multipart.FileHeader) ([]string, error) {
 }
 
 func decodeJSON(request *http.Request, target any) error {
-	decoder := json.NewDecoder(http.MaxBytesReader(nil, request.Body, 1<<20))
+	decoder := json.NewDecoder(io.LimitReader(request.Body, 1<<20))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
 		return fmt.Errorf("invalid request body: %w", err)
