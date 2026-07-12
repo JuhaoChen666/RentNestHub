@@ -27,6 +27,9 @@ const (
 	defaultSearchLimit = 24
 	maxSearchLimit     = 100
 	maxSearchOffset    = 10000
+	searchSortLatest   = "latest"
+	searchSortRentAsc  = "rent_asc"
+	searchSortRentDesc = "rent_desc"
 )
 
 type listHousesResponse struct {
@@ -35,10 +38,11 @@ type listHousesResponse struct {
 }
 
 type listHousesMeta struct {
-	Limit   int  `json:"limit"`
-	Offset  int  `json:"offset"`
-	Count   int  `json:"count"`
-	HasMore bool `json:"hasMore"`
+	Limit   int    `json:"limit"`
+	Offset  int    `json:"offset"`
+	Count   int    `json:"count"`
+	HasMore bool   `json:"hasMore"`
+	Sort    string `json:"sort"`
 }
 
 func (api *API) listHouses(writer http.ResponseWriter, request *http.Request) {
@@ -314,9 +318,14 @@ func houseFilterFromQuery(query url.Values) (domain.HouseFilter, error) {
 	city := strings.TrimSpace(query.Get("city"))
 	district := strings.TrimSpace(query.Get("district"))
 	keyword := strings.TrimSpace(query.Get("keyword"))
+	sort := strings.TrimSpace(query.Get("sort"))
+	if sort == "" {
+		sort = searchSortLatest
+	}
 	validationErrors = append(validationErrors, validateOptionalText("city", city, 80)...)
 	validationErrors = append(validationErrors, validateOptionalText("district", district, 80)...)
 	validationErrors = append(validationErrors, validateOptionalText("keyword", keyword, 80)...)
+	validationErrors = append(validationErrors, validateSearchSort(sort)...)
 	if len(validationErrors) > 0 {
 		return domain.HouseFilter{}, errors.New("invalid search query: " + strings.Join(validationErrors, "; "))
 	}
@@ -333,6 +342,7 @@ func houseFilterFromQuery(query url.Values) (domain.HouseFilter, error) {
 		Bedrooms:   bedrooms,
 		Limit:      limit,
 		Offset:     offset,
+		Sort:       sort,
 		OnlyActive: true,
 	}, nil
 }
@@ -345,7 +355,17 @@ func newListHousesResponse(houses []domain.House, filter domain.HouseFilter) lis
 			Offset:  filter.Offset,
 			Count:   len(houses),
 			HasMore: len(houses) == filter.Limit,
+			Sort:    filter.Sort,
 		},
+	}
+}
+
+func validateSearchSort(sort string) []string {
+	switch sort {
+	case searchSortLatest, searchSortRentAsc, searchSortRentDesc:
+		return nil
+	default:
+		return []string{"sort must be one of latest, rent_asc, rent_desc"}
 	}
 }
 
