@@ -57,6 +57,45 @@ func TestHouseFromFormRejectsOutOfRangeFields(t *testing.T) {
 	}
 }
 
+func TestDetectImageExtensionAcceptsSupportedImages(t *testing.T) {
+	cases := []struct {
+		name      string
+		sample    []byte
+		extension string
+	}{
+		{
+			name:      "jpeg",
+			sample:    []byte{0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 'J', 'F', 'I', 'F', 0x00},
+			extension: ".jpg",
+		},
+		{
+			name:      "png",
+			sample:    []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 0x00, 0x00, 0x00, '\r', 'I', 'H', 'D', 'R'},
+			extension: ".png",
+		},
+		{
+			name:      "webp",
+			sample:    []byte{'R', 'I', 'F', 'F', 0x1a, 0x00, 0x00, 0x00, 'W', 'E', 'B', 'P', 'V', 'P', '8', ' '},
+			extension: ".webp",
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			extension, ok := detectImageExtension(testCase.sample)
+			if !ok || extension != testCase.extension {
+				t.Fatalf("expected %s, got %q accepted=%v", testCase.extension, extension, ok)
+			}
+		})
+	}
+}
+
+func TestDetectImageExtensionRejectsNonImages(t *testing.T) {
+	if extension, ok := detectImageExtension([]byte("plain text")); ok {
+		t.Fatalf("expected non-image to be rejected, got %q", extension)
+	}
+}
+
 func validHouseForm() *multipart.Form {
 	return &multipart.Form{Value: map[string][]string{
 		"landlordId":  {"1"},
