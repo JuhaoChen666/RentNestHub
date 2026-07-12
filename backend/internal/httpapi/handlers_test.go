@@ -5,6 +5,8 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+
+	"github.com/JuhaoChen666/RentNestHub/backend/internal/domain"
 )
 
 func TestHouseFromFormAcceptsValidPayload(t *testing.T) {
@@ -143,6 +145,26 @@ func TestHouseFilterFromQueryRejectsInvertedRentRange(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "minRent cannot exceed maxRent") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestHouseFilterFromQueryUsesDefaultLimit(t *testing.T) {
+	filter, err := houseFilterFromQuery(url.Values{})
+	if err != nil {
+		t.Fatalf("expected empty query to be valid, got %v", err)
+	}
+	if filter.Limit != defaultSearchLimit || filter.Offset != 0 {
+		t.Fatalf("unexpected pagination defaults: %#v", filter)
+	}
+}
+
+func TestNewListHousesResponseIncludesPaginationMeta(t *testing.T) {
+	response := newListHousesResponse(
+		[]domain.House{{ID: 1}, {ID: 2}},
+		domain.HouseFilter{Limit: 2, Offset: 4},
+	)
+	if response.Meta.Count != 2 || response.Meta.Offset != 4 || !response.Meta.HasMore {
+		t.Fatalf("unexpected pagination meta: %#v", response.Meta)
 	}
 }
 

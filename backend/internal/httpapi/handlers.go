@@ -23,7 +23,23 @@ const (
 	maxImageFiles = 8
 	maxImageSize  = 5 << 20
 	sniffSize     = 512
+
+	defaultSearchLimit = 24
+	maxSearchLimit     = 100
+	maxSearchOffset    = 10000
 )
+
+type listHousesResponse struct {
+	Items []domain.House `json:"items"`
+	Meta  listHousesMeta `json:"meta"`
+}
+
+type listHousesMeta struct {
+	Limit   int  `json:"limit"`
+	Offset  int  `json:"offset"`
+	Count   int  `json:"count"`
+	HasMore bool `json:"hasMore"`
+}
 
 func (api *API) listHouses(writer http.ResponseWriter, request *http.Request) {
 	filter, err := houseFilterFromQuery(request.URL.Query())
@@ -36,7 +52,7 @@ func (api *API) listHouses(writer http.ResponseWriter, request *http.Request) {
 		api.internalError(writer, request, err)
 		return
 	}
-	writeJSON(writer, http.StatusOK, map[string]any{"items": houses})
+	writeJSON(writer, http.StatusOK, newListHousesResponse(houses, filter))
 }
 
 func (api *API) getHouse(writer http.ResponseWriter, request *http.Request) {
@@ -282,8 +298,8 @@ func houseFilterFromQuery(query url.Values) (domain.HouseFilter, error) {
 	minRent, minRentErrors := parseOptionalBoundedInt(query, "minRent", 1, 200000)
 	maxRent, maxRentErrors := parseOptionalBoundedInt(query, "maxRent", 1, 200000)
 	bedrooms, bedroomErrors := parseOptionalBoundedInt(query, "bedrooms", 1, 20)
-	limit, limitErrors := parseOptionalBoundedInt(query, "limit", 1, 100)
-	offset, offsetErrors := parseOptionalBoundedInt(query, "offset", 0, 10000)
+	limit, limitErrors := parseOptionalBoundedInt(query, "limit", 1, maxSearchLimit)
+	offset, offsetErrors := parseOptionalBoundedInt(query, "offset", 0, maxSearchOffset)
 
 	var validationErrors []string
 	validationErrors = append(validationErrors, minRentErrors...)
@@ -304,6 +320,9 @@ func houseFilterFromQuery(query url.Values) (domain.HouseFilter, error) {
 	if len(validationErrors) > 0 {
 		return domain.HouseFilter{}, errors.New("invalid search query: " + strings.Join(validationErrors, "; "))
 	}
+	if limit == 0 {
+		limit = defaultSearchLimit
+	}
 
 	return domain.HouseFilter{
 		City:       city,
@@ -316,6 +335,18 @@ func houseFilterFromQuery(query url.Values) (domain.HouseFilter, error) {
 		Offset:     offset,
 		OnlyActive: true,
 	}, nil
+}
+
+func newListHousesResponse(houses []domain.House, filter domain.HouseFilter) listHousesResponse {
+	return listHousesResponse{
+		Items: houses,
+		Meta: listHousesMeta{
+			Limit:   filter.Limit,
+			Offset:  filter.Offset,
+			Count:   len(houses),
+			HasMore: len(houses) == filter.Limit,
+		},
+	}
 }
 
 func parseOptionalBoundedInt(
