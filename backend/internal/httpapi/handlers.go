@@ -160,11 +160,11 @@ func (api *API) createMessage(writer http.ResponseWriter, request *http.Request)
 
 func houseFromForm(form *multipart.Form) (domain.House, error) {
 	value := form.Value
-	landlordID, _ := strconv.ParseInt(first(value["landlordId"]), 10, 64)
-	monthlyRent, _ := strconv.Atoi(first(value["monthlyRent"]))
-	bedrooms, _ := strconv.Atoi(first(value["bedrooms"]))
-	bathrooms, _ := strconv.Atoi(first(value["bathrooms"]))
-	areaSqm, _ := strconv.ParseFloat(first(value["areaSqm"]), 64)
+	landlordID, landlordErr := parsePositiveInt64(value, "landlordId")
+	monthlyRent, rentErr := parseBoundedInt(value, "monthlyRent", 1, 200000)
+	bedrooms, bedroomsErr := parseBoundedInt(value, "bedrooms", 1, 20)
+	bathrooms, bathroomsErr := parseBoundedInt(value, "bathrooms", 1, 20)
+	areaSqm, areaErr := parseBoundedFloat(value, "areaSqm", 1, 2000)
 
 	house := domain.House{
 		LandlordID:  landlordID,
@@ -180,11 +180,21 @@ func houseFromForm(form *multipart.Form) (domain.House, error) {
 		Amenities:   splitCSV(first(value["amenities"])),
 		Status:      "active",
 	}
-	if house.LandlordID <= 0 || house.Title == "" || house.City == "" ||
-		house.District == "" || house.MonthlyRent <= 0 || house.Bedrooms <= 0 {
-		return domain.House{}, errors.New(
-			"landlordId, title, city, district, monthlyRent, and bedrooms are required",
-		)
+
+	var validationErrors []string
+	validationErrors = append(validationErrors, landlordErr...)
+	validationErrors = append(validationErrors, rentErr...)
+	validationErrors = append(validationErrors, bedroomsErr...)
+	validationErrors = append(validationErrors, bathroomsErr...)
+	validationErrors = append(validationErrors, areaErr...)
+	validationErrors = append(validationErrors, validateText("title", house.Title, 1, 120)...)
+	validationErrors = append(validationErrors, validateText("description", house.Description, 1, 1000)...)
+	validationErrors = append(validationErrors, validateText("city", house.City, 1, 80)...)
+	validationErrors = append(validationErrors, validateText("district", house.District, 1, 80)...)
+	validationErrors = append(validationErrors, validateText("address", house.Address, 1, 180)...)
+	validationErrors = append(validationErrors, validateAmenities(house.Amenities)...)
+	if len(validationErrors) > 0 {
+		return domain.House{}, errors.New("invalid house payload: " + strings.Join(validationErrors, "; "))
 	}
 	return house, nil
 }
@@ -259,6 +269,75 @@ func splitCSV(value string) []string {
 		}
 	}
 	return result
+}
+
+func parsePositiveInt64(value map[string][]string, field string) (int64, []string) {
+	raw := strings.TrimSpace(first(value[field]))
+	if raw == "" {
+		return 0, []string{field + " is required"}
+	}
+	parsed, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || parsed <= 0 {
+		return 0, []string{field + " must be a positive integer"}
+	}
+	return parsed, nil
+}
+
+func parseBoundedInt(
+	value map[string][]string,
+	field string,
+	minimum int,
+	maximum int,
+) (int, []string) {
+	raw := strings.TrimSpace(first(value[field]))
+	if raw == "" {
+		return 0, []string{field + " is required"}
+	}
+	parsed, err := strconv.Atoi(raw)
+	if err != nil || parsed < minimum || parsed > maximum {
+		return 0, []string{fmt.Sprintf("%s must be between %d and %d", field, minimum, maximum)}
+	}
+	return parsed, nil
+}
+
+func parseBoundedFloat(
+	value map[string][]string,
+	field string,
+	minimum float64,
+	maximum float64,
+) (float64, []string) {
+	raw := strings.TrimSpace(first(value[field]))
+	if raw == "" {
+		return 0, []string{field + " is required"}
+	}
+	parsed, err := strconv.ParseFloat(raw, 64)
+	if err != nil || parsed < minimum || parsed > maximum {
+		return 0, []string{fmt.Sprintf("%s must be between %.0f and %.0f", field, minimum, maximum)}
+	}
+	return parsed, nil
+}
+
+func validateText(field string, value string, minimum int, maximum int) []string {
+	length := len([]rune(strings.TrimSpace(value)))
+	if length < minimum {
+		return []string{field + " is required"}
+	}
+	if length > maximum {
+		return []string{fmt.Sprintf("%s cannot exceed %d characters", field, maximum)}
+	}
+	return nil
+}
+
+func validateAmenities(amenities []string) []string {
+	if len(amenities) > 12 {
+		return []string{"amenities cannot contain more than 12 items"}
+	}
+	for _, amenity := range amenities {
+		if len([]rune(amenity)) > 30 {
+			return []string{"amenities cannot exceed 30 characters each"}
+		}
+	}
+	return nil
 }
 
 func intQuery(value string) int {
