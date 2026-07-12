@@ -1,9 +1,9 @@
-import type { House, HouseFilters, ListingResult, Recommendation } from "./types";
-
-interface RecommendationResponse {
-  items: Recommendation[];
-  mode: string;
-}
+import type {
+  House,
+  HouseFilters,
+  ListingResult,
+  RecommendationResult,
+} from "./types";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
@@ -38,8 +38,8 @@ export async function recommend(input: {
   district: string;
   maxRent: number;
   bedrooms: number;
-}): Promise<Recommendation[]> {
-  const data = await request<RecommendationResponse>(
+}): Promise<RecommendationResult> {
+  return request<RecommendationResult>(
     "/api/v1/recommendations",
     {
       method: "POST",
@@ -47,7 +47,6 @@ export async function recommend(input: {
       body: JSON.stringify({ tenantId: 2, limit: 6, ...input }),
     },
   );
-  return data.items;
 }
 
 export function favoriteHouse(houseId: number): Promise<void> {

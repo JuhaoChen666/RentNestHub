@@ -77,4 +77,5 @@ type HouseRepository interface {
 
 type Recommender interface {
 	Recommend(context.Context, RecommendationRequest) ([]Recommendation, error)
+	Mode() string
 }

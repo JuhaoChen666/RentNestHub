@@ -38,6 +38,10 @@ type HTTPRecommendationProvider struct {
 	fallback LocalRecommendationProvider
 }
 
+func (HTTPRecommendationProvider) Mode() string {
+	return "ai-http"
+}
+
 func (provider HTTPRecommendationProvider) Recommend(
 	ctx context.Context,
 	houses []domain.House,

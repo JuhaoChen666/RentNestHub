@@ -29,6 +29,10 @@ func (provider *fakeProvider) Recommend(
 	return []domain.Recommendation{{House: houses[0], Score: 88, Reason: "provider result"}}, nil
 }
 
+func (*fakeProvider) Mode() string {
+	return "fake-provider"
+}
+
 func (repository fakeRepository) ListHouses(context.Context, domain.HouseFilter) ([]domain.House, error) {
 	return repository.houses, nil
 }
@@ -93,5 +97,8 @@ func TestRecommendUsesInjectedProvider(t *testing.T) {
 	}
 	if len(result) != 1 || result[0].House.ID != 7 {
 		t.Fatalf("unexpected provider result: %#v", result)
+	}
+	if recommender.Mode() != "fake-provider" {
+		t.Fatalf("unexpected recommender mode %q", recommender.Mode())
 	}
 }
