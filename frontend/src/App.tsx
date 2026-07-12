@@ -30,6 +30,19 @@ import {
   recommend,
   sendMessage,
 } from "./api";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import type { House, HouseFilters, ListingMeta, Recommendation } from "./types";
 
 const fallbackImage =
@@ -155,7 +168,7 @@ function App() {
         <form className="filter-bar" onSubmit={handleSearch}>
           <label className="search-field">
             <Search size={18} />
-            <input
+            <Input
               aria-label="关键词"
               value={filters.keyword}
               onChange={(event) =>
@@ -187,10 +200,10 @@ function App() {
             options={["", "1", "2", "3"]}
             format={(value) => (value ? `${value} 室及以上` : "不限")}
           />
-          <button className="primary-button search-button" type="submit">
+          <Button className="primary-button search-button" type="submit">
             <SlidersHorizontal size={18} />
             筛选房源
-          </button>
+          </Button>
         </form>
 
         <div className="content-layout">
@@ -226,33 +239,36 @@ function App() {
                 </h2>
               </div>
               {activeView === "recommend" && (
-                <button
+                <Button
                   className="text-button"
                   onClick={() => setActiveView("browse")}
                   type="button"
+                  variant="ghost"
                 >
                   返回筛选结果
-                </button>
+                </Button>
               )}
             </div>
 
             {error && (
               <div className="error-banner">
                 <span>{error}</span>
-                <button
+                <Button
                   aria-label="关闭错误提示"
                   onClick={() => setError("")}
                   type="button"
+                  variant="ghost"
+                  size="icon"
                 >
                   <X size={16} />
-                </button>
+                </Button>
               </div>
             )}
 
             {loading ? (
               <div className="loading-grid">
                 {[1, 2, 3].map((item) => (
-                  <div className="skeleton" key={item} />
+                  <Skeleton className="skeleton" key={item} />
                 ))}
               </div>
             ) : visibleHouses.length > 0 ? (
@@ -273,14 +289,15 @@ function App() {
                 </div>
                 {activeView === "browse" && listingMeta.hasMore && (
                   <div className="load-more-row">
-                    <button
+                    <Button
                       className="load-more-button"
                       disabled={loadingMore}
                       onClick={() => void handleLoadMore()}
                       type="button"
+                      variant="outline"
                     >
                       {loadingMore ? "正在加载..." : "加载更多"}
-                    </button>
+                    </Button>
                   </div>
                 )}
               </>
@@ -331,13 +348,18 @@ function Header({ onPublish }: { onPublish: () => void }) {
         <a href="#messages">消息</a>
       </nav>
       <div className="topbar-actions">
-        <button className="secondary-button" onClick={onPublish} type="button">
+        <Button
+          className="secondary-button"
+          onClick={onPublish}
+          type="button"
+          variant="secondary"
+        >
           <Plus size={17} />
           发布房源
-        </button>
-        <button className="avatar" aria-label="用户中心" type="button">
+        </Button>
+        <Button className="avatar" aria-label="用户中心" type="button" size="icon">
           陈
-        </button>
+        </Button>
       </div>
     </header>
   );
@@ -362,7 +384,7 @@ function SelectField({
     <label className="select-field">
       {icon}
       <span className="sr-only">{label}</span>
-      <select
+      <NativeSelect
         aria-label={label}
         value={value}
         onChange={(event) => onChange(event.target.value)}
@@ -372,7 +394,7 @@ function SelectField({
             {format(option)}
           </option>
         ))}
-      </select>
+      </NativeSelect>
       <ChevronDown size={15} />
     </label>
   );
@@ -419,20 +441,20 @@ function RecommendationForm({
 
   return (
     <form onSubmit={handleSubmit}>
-      <textarea
+      <Textarea
         aria-label="租房需求"
         maxLength={500}
         value={need}
         onChange={(event) => setNeed(event.target.value)}
       />
-      <button
+      <Button
         className="ai-button"
         disabled={submitting || !need.trim()}
         type="submit"
       >
         <Sparkles size={18} />
         {submitting ? "正在匹配..." : "生成专属推荐"}
-      </button>
+      </Button>
     </form>
   );
 }
@@ -451,26 +473,30 @@ function HouseCard({
   onMessage: () => void;
 }) {
   return (
-    <article className="house-card">
+    <Card className="house-card">
       <div className="house-image-wrap">
         <img
           className="house-image"
           src={house.imageUrls[0] || fallbackImage}
           alt={`${house.title}室内实景`}
         />
-        <button
+        <Button
           className={`favorite-button ${favorite ? "is-favorite" : ""}`}
           aria-label={favorite ? "取消收藏" : "收藏房源"}
           onClick={onFavorite}
           type="button"
+          size="icon"
+          variant="ghost"
         >
           <Heart size={18} fill={favorite ? "currentColor" : "none"} />
-        </button>
+        </Button>
         {recommendation && (
-          <span className="match-badge">{Math.round(recommendation.score)}% 匹配</span>
+          <Badge className="match-badge">
+            {Math.round(recommendation.score)}% 匹配
+          </Badge>
         )}
       </div>
-      <div className="house-body">
+      <CardContent className="house-body">
         <div className="house-location">
           <MapPin size={14} />
           {house.city} · {house.district}
@@ -488,7 +514,7 @@ function HouseCard({
         )}
         <div className="amenity-list">
           {house.amenities.slice(0, 3).map((amenity) => (
-            <span key={amenity}>{amenity}</span>
+            <Badge key={amenity}>{amenity}</Badge>
           ))}
         </div>
         <div className="house-footer">
@@ -496,17 +522,18 @@ function HouseCard({
             <strong>¥{house.monthlyRent.toLocaleString()}</strong>
             <span>/ 月</span>
           </div>
-          <button
+          <Button
             className="icon-text-button"
             onClick={onMessage}
             type="button"
+            variant="outline"
           >
             <MessageCircle size={16} />
             咨询
-          </button>
+          </Button>
         </div>
-      </div>
-    </article>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -520,22 +547,14 @@ function DialogFrame({
   onClose: () => void;
 }) {
   return (
-    <div className="dialog-backdrop" role="presentation">
-      <section
-        aria-labelledby="dialog-title"
-        aria-modal="true"
-        className="dialog"
-        role="dialog"
-      >
-        <header className="dialog-head">
-          <h2 id="dialog-title">{title}</h2>
-          <button aria-label="关闭" onClick={onClose} type="button">
-            <X size={19} />
-          </button>
-        </header>
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="dialog">
+        <DialogHeader className="dialog-head">
+          <DialogTitle id="dialog-title">{title}</DialogTitle>
+        </DialogHeader>
         {children}
-      </section>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -571,7 +590,7 @@ function PublishDialog({
       <form className="dialog-form" onSubmit={handleSubmit}>
         <label className="wide">
           房源标题
-          <input
+          <Input
             maxLength={120}
             name="title"
             required
@@ -580,15 +599,15 @@ function PublishDialog({
         </label>
         <label>
           城市
-          <input maxLength={80} name="city" required defaultValue="上海" />
+          <Input maxLength={80} name="city" required defaultValue="上海" />
         </label>
         <label>
           区域
-          <input maxLength={80} name="district" required placeholder="徐汇区" />
+          <Input maxLength={80} name="district" required placeholder="徐汇区" />
         </label>
         <label className="wide">
           详细地址
-          <input
+          <Input
             maxLength={180}
             name="address"
             required
@@ -597,7 +616,7 @@ function PublishDialog({
         </label>
         <label>
           月租（元）
-          <input
+          <Input
             inputMode="numeric"
             max="200000"
             min="1"
@@ -608,7 +627,7 @@ function PublishDialog({
         </label>
         <label>
           面积（m²）
-          <input
+          <Input
             inputMode="decimal"
             max="2000"
             min="1"
@@ -620,7 +639,7 @@ function PublishDialog({
         </label>
         <label>
           卧室
-          <input
+          <Input
             inputMode="numeric"
             max="20"
             min="1"
@@ -631,7 +650,7 @@ function PublishDialog({
         </label>
         <label>
           卫生间
-          <input
+          <Input
             defaultValue="1"
             inputMode="numeric"
             max="20"
@@ -643,7 +662,7 @@ function PublishDialog({
         </label>
         <label className="wide">
           配套设施
-          <input
+          <Input
             maxLength={360}
             name="amenities"
             placeholder="近地铁, 电梯, 可做饭"
@@ -651,7 +670,7 @@ function PublishDialog({
         </label>
         <label className="wide">
           房源描述
-          <textarea
+          <Textarea
             maxLength={1000}
             name="description"
             required
@@ -661,7 +680,7 @@ function PublishDialog({
         <label className="upload-field wide">
           <Upload size={18} />
           上传房源图片
-          <input
+          <Input
             accept="image/jpeg,image/png,image/webp"
             aria-label="上传房源图片，最多 8 张，每张不超过 5 MB"
             multiple
@@ -671,13 +690,18 @@ function PublishDialog({
         </label>
         {error && <p className="form-error">{error}</p>}
         <div className="dialog-actions wide">
-          <button className="text-button" onClick={onClose} type="button">
+          <Button
+            className="text-button"
+            onClick={onClose}
+            type="button"
+            variant="ghost"
+          >
             取消
-          </button>
-          <button className="primary-button" disabled={submitting} type="submit">
+          </Button>
+          <Button className="primary-button" disabled={submitting} type="submit">
             <Plus size={17} />
             {submitting ? "正在发布..." : "发布房源"}
-          </button>
+          </Button>
         </div>
       </form>
     </DialogFrame>
@@ -716,9 +740,9 @@ function MessageDialog({
           <span><Check size={24} /></span>
           <h3>留言已发送</h3>
           <p>房东回复后会出现在站内消息中。</p>
-          <button className="primary-button" onClick={onClose} type="button">
+          <Button className="primary-button" onClick={onClose} type="button">
             完成
-          </button>
+          </Button>
         </div>
       ) : (
         <form className="message-form" onSubmit={handleSubmit}>
@@ -731,7 +755,7 @@ function MessageDialog({
           </div>
           <label>
             留言内容
-            <textarea
+            <Textarea
               maxLength={1000}
               required
               value={content}
@@ -739,10 +763,10 @@ function MessageDialog({
             />
           </label>
           {error && <p className="form-error">{error}</p>}
-          <button className="primary-button" type="submit">
+          <Button className="primary-button" type="submit">
             <Send size={17} />
             发送留言
-          </button>
+          </Button>
         </form>
       )}
     </DialogFrame>
