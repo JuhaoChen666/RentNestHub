@@ -531,48 +531,103 @@ function PublishDialog({
       <form className="dialog-form" onSubmit={handleSubmit}>
         <label className="wide">
           房源标题
-          <input name="title" required placeholder="例如：徐汇滨江明亮两居" />
+          <input
+            maxLength={120}
+            name="title"
+            required
+            placeholder="例如：徐汇滨江明亮两居"
+          />
         </label>
         <label>
           城市
-          <input name="city" required defaultValue="上海" />
+          <input maxLength={80} name="city" required defaultValue="上海" />
         </label>
         <label>
           区域
-          <input name="district" required placeholder="徐汇区" />
+          <input maxLength={80} name="district" required placeholder="徐汇区" />
         </label>
         <label className="wide">
           详细地址
-          <input name="address" placeholder="仅用于房源信息展示" />
+          <input
+            maxLength={180}
+            name="address"
+            required
+            placeholder="仅用于房源信息展示"
+          />
         </label>
         <label>
           月租（元）
-          <input name="monthlyRent" min="1" required type="number" />
+          <input
+            inputMode="numeric"
+            max="200000"
+            min="1"
+            name="monthlyRent"
+            required
+            type="number"
+          />
         </label>
         <label>
           面积（m²）
-          <input name="areaSqm" min="1" step="0.1" type="number" />
+          <input
+            inputMode="decimal"
+            max="2000"
+            min="1"
+            name="areaSqm"
+            required
+            step="0.1"
+            type="number"
+          />
         </label>
         <label>
           卧室
-          <input name="bedrooms" min="1" required type="number" />
+          <input
+            inputMode="numeric"
+            max="20"
+            min="1"
+            name="bedrooms"
+            required
+            type="number"
+          />
         </label>
         <label>
           卫生间
-          <input name="bathrooms" min="1" defaultValue="1" type="number" />
+          <input
+            defaultValue="1"
+            inputMode="numeric"
+            max="20"
+            min="1"
+            name="bathrooms"
+            required
+            type="number"
+          />
         </label>
         <label className="wide">
           配套设施
-          <input name="amenities" placeholder="近地铁, 电梯, 可做饭" />
+          <input
+            maxLength={360}
+            name="amenities"
+            placeholder="近地铁, 电梯, 可做饭"
+          />
         </label>
         <label className="wide">
           房源描述
-          <textarea name="description" placeholder="介绍采光、交通和入住条件" />
+          <textarea
+            maxLength={1000}
+            name="description"
+            required
+            placeholder="介绍采光、交通和入住条件"
+          />
         </label>
         <label className="upload-field wide">
           <Upload size={18} />
           上传房源图片
-          <input accept="image/jpeg,image/png,image/webp" multiple name="images" type="file" />
+          <input
+            accept="image/jpeg,image/png,image/webp"
+            aria-label="上传房源图片，最多 8 张，每张不超过 5 MB"
+            multiple
+            name="images"
+            type="file"
+          />
         </label>
         {error && <p className="form-error">{error}</p>}
         <div className="dialog-actions wide">
