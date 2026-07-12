@@ -11,10 +11,62 @@ import (
 
 type RecommenderService struct {
 	repository domain.HouseRepository
+	provider   RecommendationProvider
 }
 
 func NewRecommender(repository domain.HouseRepository) *RecommenderService {
-	return &RecommenderService{repository: repository}
+	return NewRecommenderWithProvider(repository, LocalRecommendationProvider{})
+}
+
+func NewRecommenderWithProvider(
+	repository domain.HouseRepository,
+	provider RecommendationProvider,
+) *RecommenderService {
+	return &RecommenderService{
+		repository: repository,
+		provider:   provider,
+	}
+}
+
+type RecommendationProvider interface {
+	Recommend(
+		ctx context.Context,
+		houses []domain.House,
+		request domain.RecommendationRequest,
+		limit int,
+	) ([]domain.Recommendation, error)
+}
+
+type LocalRecommendationProvider struct{}
+
+func (LocalRecommendationProvider) Recommend(
+	_ context.Context,
+	houses []domain.House,
+	request domain.RecommendationRequest,
+	limit int,
+) ([]domain.Recommendation, error) {
+	need := strings.ToLower(strings.TrimSpace(request.Need))
+	recommendations := make([]domain.Recommendation, 0, len(houses))
+	for _, house := range houses {
+		score, reasons := scoreHouse(house, request, need)
+		recommendations = append(recommendations, domain.Recommendation{
+			House:  house,
+			Score:  score,
+			Reason: strings.Join(reasons, "，"),
+		})
+	}
+
+	sort.SliceStable(recommendations, func(i, j int) bool {
+		if recommendations[i].Score == recommendations[j].Score {
+			return recommendations[i].House.MonthlyRent < recommendations[j].House.MonthlyRent
+		}
+		return recommendations[i].Score > recommendations[j].Score
+	})
+
+	if len(recommendations) > limit {
+		recommendations = recommendations[:limit]
+	}
+	return recommendations, nil
 }
 
 func (service *RecommenderService) Recommend(
@@ -38,28 +90,7 @@ func (service *RecommenderService) Recommend(
 		return nil, err
 	}
 
-	need := strings.ToLower(strings.TrimSpace(request.Need))
-	recommendations := make([]domain.Recommendation, 0, len(houses))
-	for _, house := range houses {
-		score, reasons := scoreHouse(house, request, need)
-		recommendations = append(recommendations, domain.Recommendation{
-			House:  house,
-			Score:  score,
-			Reason: strings.Join(reasons, "，"),
-		})
-	}
-
-	sort.SliceStable(recommendations, func(i, j int) bool {
-		if recommendations[i].Score == recommendations[j].Score {
-			return recommendations[i].House.MonthlyRent < recommendations[j].House.MonthlyRent
-		}
-		return recommendations[i].Score > recommendations[j].Score
-	})
-
-	if len(recommendations) > limit {
-		recommendations = recommendations[:limit]
-	}
-	return recommendations, nil
+	return service.provider.Recommend(ctx, houses, request, limit)
 }
 
 func scoreHouse(
