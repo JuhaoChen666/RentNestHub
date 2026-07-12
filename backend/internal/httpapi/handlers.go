@@ -7,6 +7,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -25,18 +26,12 @@ const (
 )
 
 func (api *API) listHouses(writer http.ResponseWriter, request *http.Request) {
-	query := request.URL.Query()
-	houses, err := api.repository.ListHouses(request.Context(), domain.HouseFilter{
-		City:       strings.TrimSpace(query.Get("city")),
-		District:   strings.TrimSpace(query.Get("district")),
-		Keyword:    strings.TrimSpace(query.Get("keyword")),
-		MinRent:    intQuery(query.Get("minRent")),
-		MaxRent:    intQuery(query.Get("maxRent")),
-		Bedrooms:   intQuery(query.Get("bedrooms")),
-		Limit:      intQuery(query.Get("limit")),
-		Offset:     intQuery(query.Get("offset")),
-		OnlyActive: true,
-	})
+	filter, err := houseFilterFromQuery(request.URL.Query())
+	if err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+	houses, err := api.repository.ListHouses(request.Context(), filter)
 	if err != nil {
 		api.internalError(writer, request, err)
 		return
@@ -283,6 +278,70 @@ func detectImageExtension(sample []byte) (string, bool) {
 	}
 }
 
+func houseFilterFromQuery(query url.Values) (domain.HouseFilter, error) {
+	minRent, minRentErrors := parseOptionalBoundedInt(query, "minRent", 1, 200000)
+	maxRent, maxRentErrors := parseOptionalBoundedInt(query, "maxRent", 1, 200000)
+	bedrooms, bedroomErrors := parseOptionalBoundedInt(query, "bedrooms", 1, 20)
+	limit, limitErrors := parseOptionalBoundedInt(query, "limit", 1, 100)
+	offset, offsetErrors := parseOptionalBoundedInt(query, "offset", 0, 10000)
+
+	var validationErrors []string
+	validationErrors = append(validationErrors, minRentErrors...)
+	validationErrors = append(validationErrors, maxRentErrors...)
+	validationErrors = append(validationErrors, bedroomErrors...)
+	validationErrors = append(validationErrors, limitErrors...)
+	validationErrors = append(validationErrors, offsetErrors...)
+	if minRent > 0 && maxRent > 0 && minRent > maxRent {
+		validationErrors = append(validationErrors, "minRent cannot exceed maxRent")
+	}
+
+	city := strings.TrimSpace(query.Get("city"))
+	district := strings.TrimSpace(query.Get("district"))
+	keyword := strings.TrimSpace(query.Get("keyword"))
+	validationErrors = append(validationErrors, validateOptionalText("city", city, 80)...)
+	validationErrors = append(validationErrors, validateOptionalText("district", district, 80)...)
+	validationErrors = append(validationErrors, validateOptionalText("keyword", keyword, 80)...)
+	if len(validationErrors) > 0 {
+		return domain.HouseFilter{}, errors.New("invalid search query: " + strings.Join(validationErrors, "; "))
+	}
+
+	return domain.HouseFilter{
+		City:       city,
+		District:   district,
+		Keyword:    keyword,
+		MinRent:    minRent,
+		MaxRent:    maxRent,
+		Bedrooms:   bedrooms,
+		Limit:      limit,
+		Offset:     offset,
+		OnlyActive: true,
+	}, nil
+}
+
+func parseOptionalBoundedInt(
+	query url.Values,
+	field string,
+	minimum int,
+	maximum int,
+) (int, []string) {
+	raw := strings.TrimSpace(query.Get(field))
+	if raw == "" {
+		return 0, nil
+	}
+	parsed, err := strconv.Atoi(raw)
+	if err != nil || parsed < minimum || parsed > maximum {
+		return 0, []string{fmt.Sprintf("%s must be between %d and %d", field, minimum, maximum)}
+	}
+	return parsed, nil
+}
+
+func validateOptionalText(field string, value string, maximum int) []string {
+	if len([]rune(value)) > maximum {
+		return []string{fmt.Sprintf("%s cannot exceed %d characters", field, maximum)}
+	}
+	return nil
+}
+
 func decodeJSON(request *http.Request, target any) error {
 	decoder := json.NewDecoder(io.LimitReader(request.Body, 1<<20))
 	decoder.DisallowUnknownFields()
@@ -377,9 +436,4 @@ func validateAmenities(amenities []string) []string {
 		}
 	}
 	return nil
-}
-
-func intQuery(value string) int {
-	parsed, _ := strconv.Atoi(value)
-	return parsed
 }
