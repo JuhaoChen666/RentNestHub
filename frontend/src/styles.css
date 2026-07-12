@@ -382,6 +382,31 @@ h1 {
   gap: 18px;
 }
 
+.load-more-row {
+  display: flex;
+  justify-content: center;
+  margin-top: 22px;
+}
+
+.load-more-button {
+  min-width: 156px;
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 18px;
+  color: var(--green);
+  background: var(--green-soft);
+  border: 1px solid #b9d2c4;
+  border-radius: 6px;
+  font-weight: 700;
+}
+
+.load-more-button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
 .house-card {
   min-width: 0;
   overflow: hidden;

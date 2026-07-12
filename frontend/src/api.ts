@@ -1,8 +1,4 @@
-import type { House, HouseFilters, Recommendation } from "./types";
-
-interface ListResponse {
-  items: House[];
-}
+import type { House, HouseFilters, ListingResult, Recommendation } from "./types";
 
 interface RecommendationResponse {
   items: Recommendation[];
@@ -23,13 +19,17 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export async function listHouses(filters: HouseFilters): Promise<House[]> {
+export async function listHouses(
+  filters: HouseFilters,
+  offset = 0,
+): Promise<ListingResult> {
   const params = new URLSearchParams();
   Object.entries(filters).forEach(([key, value]) => {
     if (value) params.set(key, value);
   });
-  const data = await request<ListResponse>(`/api/v1/houses?${params}`);
-  return data.items;
+  params.set("limit", "24");
+  params.set("offset", String(offset));
+  return request<ListingResult>(`/api/v1/houses?${params}`);
 }
 
 export async function recommend(input: {
