@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"mime/multipart"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -93,6 +94,55 @@ func TestDetectImageExtensionAcceptsSupportedImages(t *testing.T) {
 func TestDetectImageExtensionRejectsNonImages(t *testing.T) {
 	if extension, ok := detectImageExtension([]byte("plain text")); ok {
 		t.Fatalf("expected non-image to be rejected, got %q", extension)
+	}
+}
+
+func TestHouseFilterFromQueryAcceptsValidQuery(t *testing.T) {
+	filter, err := houseFilterFromQuery(url.Values{
+		"city":     {" 上海 "},
+		"district": {"徐汇区"},
+		"keyword":  {"近地铁"},
+		"minRent":  {"3000"},
+		"maxRent":  {"7000"},
+		"bedrooms": {"2"},
+		"limit":    {"20"},
+		"offset":   {"40"},
+	})
+	if err != nil {
+		t.Fatalf("expected valid query, got %v", err)
+	}
+	if filter.City != "上海" || filter.MinRent != 3000 ||
+		filter.MaxRent != 7000 || filter.Limit != 20 || !filter.OnlyActive {
+		t.Fatalf("unexpected filter: %#v", filter)
+	}
+}
+
+func TestHouseFilterFromQueryRejectsInvalidNumbers(t *testing.T) {
+	_, err := houseFilterFromQuery(url.Values{
+		"maxRent": {"free"},
+		"limit":   {"500"},
+	})
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	message := err.Error()
+	for _, expected := range []string{
+		"maxRent must be between 1 and 200000",
+		"limit must be between 1 and 100",
+	} {
+		if !strings.Contains(message, expected) {
+			t.Fatalf("expected %q in %q", expected, message)
+		}
+	}
+}
+
+func TestHouseFilterFromQueryRejectsInvertedRentRange(t *testing.T) {
+	_, err := houseFilterFromQuery(url.Values{
+		"minRent": {"8000"},
+		"maxRent": {"5000"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "minRent cannot exceed maxRent") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
