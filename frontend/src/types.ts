@@ -24,6 +24,19 @@ export interface HouseFilters {
   bedrooms: string;
 }
 
+export interface ListingMeta {
+  limit: number;
+  offset: number;
+  count: number;
+  hasMore: boolean;
+  sort: string;
+}
+
+export interface ListingResult {
+  items: House[];
+  meta: ListingMeta;
+}
+
 export interface Recommendation {
   house: House;
   score: number;

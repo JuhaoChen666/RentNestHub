@@ -30,7 +30,7 @@ import {
   recommend,
   sendMessage,
 } from "./api";
-import type { House, HouseFilters, Recommendation } from "./types";
+import type { House, HouseFilters, ListingMeta, Recommendation } from "./types";
 
 const fallbackImage =
   "https://images.unsplash.com/photo-1560185008-b033106af5c3?auto=format&fit=crop&w=1200&q=80";
@@ -43,30 +43,52 @@ const initialFilters: HouseFilters = {
   bedrooms: "",
 };
 
+const initialListingMeta: ListingMeta = {
+  limit: 24,
+  offset: 0,
+  count: 0,
+  hasMore: false,
+  sort: "latest",
+};
+
 function App() {
   const [filters, setFilters] = useState(initialFilters);
   const [houses, setHouses] = useState<House[]>([]);
+  const [listingMeta, setListingMeta] = useState(initialListingMeta);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
   const [activeView, setActiveView] = useState<"browse" | "recommend">("browse");
   const [favorites, setFavorites] = useState<Set<number>>(new Set());
   const [publishOpen, setPublishOpen] = useState(false);
   const [messageHouse, setMessageHouse] = useState<House | null>(null);
 
-  const loadHouses = useCallback(async (nextFilters: HouseFilters) => {
-    setLoading(true);
-    setError("");
-    try {
-      setHouses(await listHouses(nextFilters));
-    } catch (loadError) {
-      setError(
-        loadError instanceof Error ? loadError.message : "房源加载失败",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const loadHouses = useCallback(
+    async (nextFilters: HouseFilters, offset = 0, append = false) => {
+      if (append) {
+        setLoadingMore(true);
+      } else {
+        setLoading(true);
+      }
+      setError("");
+      try {
+        const result = await listHouses(nextFilters, offset);
+        setHouses((current) =>
+          append ? [...current, ...result.items] : result.items,
+        );
+        setListingMeta(result.meta);
+      } catch (loadError) {
+        setError(
+          loadError instanceof Error ? loadError.message : "房源加载失败",
+        );
+      } finally {
+        setLoading(false);
+        setLoadingMore(false);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     void loadHouses(initialFilters);
@@ -83,7 +105,11 @@ function App() {
   async function handleSearch(event: FormEvent) {
     event.preventDefault();
     setActiveView("browse");
-    await loadHouses(filters);
+    await loadHouses(filters, 0);
+  }
+
+  async function handleLoadMore() {
+    await loadHouses(filters, listingMeta.offset + listingMeta.count, true);
   }
 
   async function toggleFavorite(houseId: number) {
@@ -230,20 +256,34 @@ function App() {
                 ))}
               </div>
             ) : visibleHouses.length > 0 ? (
-              <div className="house-grid">
-                {visibleHouses.map((house) => (
-                  <HouseCard
-                    favorite={favorites.has(house.id)}
-                    house={house}
-                    key={house.id}
-                    recommendation={recommendations.find(
-                      (item) => item.house.id === house.id,
-                    )}
-                    onFavorite={() => void toggleFavorite(house.id)}
-                    onMessage={() => setMessageHouse(house)}
-                  />
-                ))}
-              </div>
+              <>
+                <div className="house-grid">
+                  {visibleHouses.map((house) => (
+                    <HouseCard
+                      favorite={favorites.has(house.id)}
+                      house={house}
+                      key={house.id}
+                      recommendation={recommendations.find(
+                        (item) => item.house.id === house.id,
+                      )}
+                      onFavorite={() => void toggleFavorite(house.id)}
+                      onMessage={() => setMessageHouse(house)}
+                    />
+                  ))}
+                </div>
+                {activeView === "browse" && listingMeta.hasMore && (
+                  <div className="load-more-row">
+                    <button
+                      className="load-more-button"
+                      disabled={loadingMore}
+                      onClick={() => void handleLoadMore()}
+                      type="button"
+                    >
+                      {loadingMore ? "正在加载..." : "加载更多"}
+                    </button>
+                  </div>
+                )}
+              </>
             ) : (
               <div className="empty-state">
                 <Home size={28} />
