@@ -1,0 +1,74 @@
+package httpapi
+
+import (
+	"mime/multipart"
+	"strings"
+	"testing"
+)
+
+func TestHouseFromFormAcceptsValidPayload(t *testing.T) {
+	house, err := houseFromForm(validHouseForm())
+	if err != nil {
+		t.Fatalf("expected valid payload, got %v", err)
+	}
+	if house.Title != "徐汇滨江明亮两居" {
+		t.Fatalf("unexpected title %q", house.Title)
+	}
+	if len(house.Amenities) != 3 {
+		t.Fatalf("expected amenities to be split, got %#v", house.Amenities)
+	}
+}
+
+func TestHouseFromFormRejectsMissingFields(t *testing.T) {
+	form := validHouseForm()
+	delete(form.Value, "title")
+	delete(form.Value, "monthlyRent")
+
+	_, err := houseFromForm(form)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	message := err.Error()
+	if !strings.Contains(message, "title is required") ||
+		!strings.Contains(message, "monthlyRent is required") {
+		t.Fatalf("unexpected validation error: %s", message)
+	}
+}
+
+func TestHouseFromFormRejectsOutOfRangeFields(t *testing.T) {
+	form := validHouseForm()
+	form.Value["monthlyRent"] = []string{"0"}
+	form.Value["bedrooms"] = []string{"25"}
+	form.Value["areaSqm"] = []string{"3000"}
+
+	_, err := houseFromForm(form)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	message := err.Error()
+	for _, expected := range []string{
+		"monthlyRent must be between 1 and 200000",
+		"bedrooms must be between 1 and 20",
+		"areaSqm must be between 1 and 2000",
+	} {
+		if !strings.Contains(message, expected) {
+			t.Fatalf("expected %q in %q", expected, message)
+		}
+	}
+}
+
+func validHouseForm() *multipart.Form {
+	return &multipart.Form{Value: map[string][]string{
+		"landlordId":  {"1"},
+		"title":       {"徐汇滨江明亮两居"},
+		"description": {"朝南客厅，步行可达地铁站，适合两人合租或小家庭。"},
+		"city":        {"上海"},
+		"district":    {"徐汇区"},
+		"address":     {"龙腾大道附近"},
+		"monthlyRent": {"6200"},
+		"bedrooms":    {"2"},
+		"bathrooms":   {"1"},
+		"areaSqm":     {"68"},
+		"amenities":   {"近地铁, 电梯, 独立阳台"},
+	}}
+}
