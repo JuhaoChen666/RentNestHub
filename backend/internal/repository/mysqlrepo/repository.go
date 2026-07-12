@@ -95,7 +95,7 @@ func (repository *Repository) ListHouses(
 	if filter.Offset < 0 {
 		filter.Offset = 0
 	}
-	query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+	query += " " + orderByClause(filter.Sort) + " LIMIT ? OFFSET ?"
 	args = append(args, limit, filter.Offset)
 
 	rows, err := repository.db.QueryContext(ctx, query, args...)
@@ -113,6 +113,17 @@ func (repository *Repository) ListHouses(
 		houses = append(houses, house)
 	}
 	return houses, rows.Err()
+}
+
+func orderByClause(sort string) string {
+	switch sort {
+	case "rent_asc":
+		return "ORDER BY monthly_rent ASC, created_at DESC"
+	case "rent_desc":
+		return "ORDER BY monthly_rent DESC, created_at DESC"
+	default:
+		return "ORDER BY created_at DESC"
+	}
 }
 
 func (repository *Repository) GetHouse(ctx context.Context, id int64) (domain.House, error) {

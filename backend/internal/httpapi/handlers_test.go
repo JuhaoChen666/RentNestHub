@@ -109,12 +109,13 @@ func TestHouseFilterFromQueryAcceptsValidQuery(t *testing.T) {
 		"bedrooms": {"2"},
 		"limit":    {"20"},
 		"offset":   {"40"},
+		"sort":     {"rent_desc"},
 	})
 	if err != nil {
 		t.Fatalf("expected valid query, got %v", err)
 	}
 	if filter.City != "上海" || filter.MinRent != 3000 ||
-		filter.MaxRent != 7000 || filter.Limit != 20 || !filter.OnlyActive {
+		filter.MaxRent != 7000 || filter.Limit != 20 || filter.Sort != "rent_desc" || !filter.OnlyActive {
 		t.Fatalf("unexpected filter: %#v", filter)
 	}
 }
@@ -156,15 +157,25 @@ func TestHouseFilterFromQueryUsesDefaultLimit(t *testing.T) {
 	if filter.Limit != defaultSearchLimit || filter.Offset != 0 {
 		t.Fatalf("unexpected pagination defaults: %#v", filter)
 	}
+	if filter.Sort != searchSortLatest {
+		t.Fatalf("unexpected sort default: %#v", filter)
+	}
 }
 
 func TestNewListHousesResponseIncludesPaginationMeta(t *testing.T) {
 	response := newListHousesResponse(
 		[]domain.House{{ID: 1}, {ID: 2}},
-		domain.HouseFilter{Limit: 2, Offset: 4},
+		domain.HouseFilter{Limit: 2, Offset: 4, Sort: "rent_asc"},
 	)
-	if response.Meta.Count != 2 || response.Meta.Offset != 4 || !response.Meta.HasMore {
+	if response.Meta.Count != 2 || response.Meta.Offset != 4 || !response.Meta.HasMore || response.Meta.Sort != "rent_asc" {
 		t.Fatalf("unexpected pagination meta: %#v", response.Meta)
+	}
+}
+
+func TestHouseFilterFromQueryRejectsInvalidSort(t *testing.T) {
+	_, err := houseFilterFromQuery(url.Values{"sort": {"popular"}})
+	if err == nil || !strings.Contains(err.Error(), "sort must be one of latest, rent_asc, rent_desc") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

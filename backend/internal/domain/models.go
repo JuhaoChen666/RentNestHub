@@ -24,25 +24,26 @@ type House struct {
 }
 
 type HouseFilter struct {
-	City        string
-	District    string
-	Keyword     string
-	MinRent     int
-	MaxRent     int
-	Bedrooms    int
-	Limit       int
-	Offset      int
-	OnlyActive  bool
+	City       string
+	District   string
+	Keyword    string
+	MinRent    int
+	MaxRent    int
+	Bedrooms   int
+	Limit      int
+	Offset     int
+	Sort       string
+	OnlyActive bool
 }
 
 type RecommendationRequest struct {
-	TenantID   int64  `json:"tenantId"`
-	Need       string `json:"need"`
-	City       string `json:"city"`
-	District   string `json:"district"`
-	MaxRent    int    `json:"maxRent"`
-	Bedrooms   int    `json:"bedrooms"`
-	Limit      int    `json:"limit"`
+	TenantID int64  `json:"tenantId"`
+	Need     string `json:"need"`
+	City     string `json:"city"`
+	District string `json:"district"`
+	MaxRent  int    `json:"maxRent"`
+	Bedrooms int    `json:"bedrooms"`
+	Limit    int    `json:"limit"`
 }
 
 type Recommendation struct {
