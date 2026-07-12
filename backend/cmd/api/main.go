@@ -27,7 +27,14 @@ func main() {
 	}
 	defer repository.Close()
 
-	recommender := service.NewRecommender(repository)
+	recommender := service.NewRecommenderWithProvider(
+		repository,
+		service.NewRecommendationProvider(service.AIProviderConfig{
+			URL:    cfg.AIAPIURL,
+			APIKey: cfg.AIAPIKey,
+			Model:  cfg.AIModel,
+		}),
+	)
 	handler := httpapi.New(httpapi.Dependencies{
 		Repository:    repository,
 		Recommender:   recommender,
