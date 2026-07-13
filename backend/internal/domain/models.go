@@ -58,11 +58,12 @@ type Favorite struct {
 }
 
 type Message struct {
-	ID        int64     `json:"id"`
-	HouseID   int64     `json:"houseId"`
-	SenderID  int64     `json:"senderId"`
-	Content   string    `json:"content"`
-	CreatedAt time.Time `json:"createdAt"`
+	ID         int64     `json:"id"`
+	HouseID    int64     `json:"houseId"`
+	HouseTitle string    `json:"houseTitle"`
+	SenderID   int64     `json:"senderId"`
+	Content    string    `json:"content"`
+	CreatedAt  time.Time `json:"createdAt"`
 }
 
 type HouseRepository interface {
@@ -72,6 +73,7 @@ type HouseRepository interface {
 	AddFavorite(context.Context, Favorite) error
 	RemoveFavorite(context.Context, Favorite) error
 	CreateMessage(context.Context, *Message) error
+	ListMessages(context.Context, int64) ([]Message, error)
 	Close() error
 }
 

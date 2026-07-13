@@ -224,6 +224,36 @@ func (repository *Repository) CreateMessage(ctx context.Context, message *domain
 	return nil
 }
 
+func (repository *Repository) ListMessages(ctx context.Context, senderID int64) ([]domain.Message, error) {
+	rows, err := repository.db.QueryContext(ctx, `
+		SELECT m.id, m.house_id, h.title, m.sender_id, m.content, m.created_at
+		FROM messages m
+		JOIN houses h ON h.id = m.house_id
+		WHERE m.sender_id = ?
+		ORDER BY m.created_at DESC`, senderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	messages := make([]domain.Message, 0)
+	for rows.Next() {
+		var message domain.Message
+		if err := rows.Scan(
+			&message.ID,
+			&message.HouseID,
+			&message.HouseTitle,
+			&message.SenderID,
+			&message.Content,
+			&message.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		messages = append(messages, message)
+	}
+	return messages, rows.Err()
+}
+
 type scanner interface {
 	Scan(...any) error
 }

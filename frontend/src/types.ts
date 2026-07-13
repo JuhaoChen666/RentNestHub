@@ -44,6 +44,15 @@ export interface Recommendation {
 }
 
 export interface RecommendationResult {
-  items: Recommendation[];
-  mode: string;
+	items: Recommendation[];
+	mode: string;
+}
+
+export interface InquiryMessage {
+	id: number;
+	houseId: number;
+	houseTitle: string;
+	senderId: number;
+	content: string;
+	createdAt: string;
 }

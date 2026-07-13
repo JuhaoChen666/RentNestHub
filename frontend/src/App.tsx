@@ -25,6 +25,7 @@ import {
 } from "react";
 import {
   favoriteHouse,
+  listInquiryMessages,
   listHouses,
   publishHouse,
   recommend,
@@ -46,6 +47,7 @@ import { Textarea } from "@/components/ui/textarea";
 import type {
   House,
   HouseFilters,
+  InquiryMessage,
   ListingMeta,
   Recommendation,
   RecommendationResult,
@@ -75,11 +77,12 @@ function App() {
   const [houses, setHouses] = useState<House[]>([]);
   const [listingMeta, setListingMeta] = useState(initialListingMeta);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+  const [inquiryMessages, setInquiryMessages] = useState<InquiryMessage[]>([]);
   const [recommendationMode, setRecommendationMode] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
-  const [activeView, setActiveView] = useState<"browse" | "recommend">("browse");
+  const [activeView, setActiveView] = useState<"browse" | "recommend" | "messages">("browse");
   const [favorites, setFavorites] = useState<Set<number>>(new Set());
   const [publishOpen, setPublishOpen] = useState(false);
   const [messageHouse, setMessageHouse] = useState<House | null>(null);
@@ -133,6 +136,21 @@ function App() {
     await loadHouses(filters, listingMeta.offset + listingMeta.count, true);
   }
 
+  async function showMessages() {
+    setActiveView("messages");
+    setLoading(true);
+    setError("");
+    try {
+      setInquiryMessages(await listInquiryMessages());
+    } catch (messagesError) {
+      setError(
+        messagesError instanceof Error ? messagesError.message : "消息加载失败",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function toggleFavorite(houseId: number) {
     if (favorites.has(houseId)) {
       setFavorites((current) => {
@@ -156,7 +174,7 @@ function App() {
 
   return (
     <div className="app-shell">
-      <Header onPublish={() => setPublishOpen(true)} />
+      <Header onMessages={() => void showMessages()} onPublish={() => setPublishOpen(true)} />
 
       <main>
         <section className="workspace-head">
@@ -239,12 +257,18 @@ function App() {
             <div className="results-head">
               <div>
                 <p className="eyebrow">
-                  {activeView === "browse" ? "筛选结果" : "专属推荐"}
+                  {activeView === "browse"
+                    ? "筛选结果"
+                    : activeView === "messages"
+                      ? "我的消息"
+                      : "专属推荐"}
                 </p>
                 <h2>
                   {activeView === "browse"
                     ? `${visibleHouses.length} 套可选房源`
-                    : "根据你的需求排序"}
+                    : activeView === "messages"
+                      ? `${inquiryMessages.length} 条咨询记录`
+                      : "根据你的需求排序"}
                 </h2>
                 {activeView === "recommend" && recommendationMode && (
                   <Badge className="recommend-mode-badge">
@@ -252,7 +276,7 @@ function App() {
                   </Badge>
                 )}
               </div>
-              {activeView === "recommend" && (
+              {activeView !== "browse" && (
                 <Button
                   className="text-button"
                   onClick={() => setActiveView("browse")}
@@ -285,6 +309,8 @@ function App() {
                   <Skeleton className="skeleton" key={item} />
                 ))}
               </div>
+            ) : activeView === "messages" ? (
+              <MessageList messages={inquiryMessages} />
             ) : visibleHouses.length > 0 ? (
               <>
                 <div className="house-grid">
@@ -345,7 +371,13 @@ function App() {
   );
 }
 
-function Header({ onPublish }: { onPublish: () => void }) {
+function Header({
+  onMessages,
+  onPublish,
+}: {
+  onMessages: () => void;
+  onPublish: () => void;
+}) {
   return (
     <header className="topbar">
       <a className="brand" href="/" aria-label="RentNestHub 首页">
@@ -359,7 +391,7 @@ function Header({ onPublish }: { onPublish: () => void }) {
           找房
         </a>
         <a href="#favorites">收藏</a>
-        <a href="#messages">消息</a>
+        <a href="#messages" onClick={(event) => { event.preventDefault(); onMessages(); }}>消息</a>
       </nav>
       <div className="topbar-actions">
         <Button

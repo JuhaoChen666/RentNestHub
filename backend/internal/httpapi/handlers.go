@@ -178,6 +178,20 @@ func (api *API) createMessage(writer http.ResponseWriter, request *http.Request)
 	writeJSON(writer, http.StatusCreated, message)
 }
 
+func (api *API) listMessages(writer http.ResponseWriter, request *http.Request) {
+	senderID, err := strconv.ParseInt(request.PathValue("senderId"), 10, 64)
+	if err != nil || senderID <= 0 {
+		writeError(writer, http.StatusBadRequest, "invalid sender id")
+		return
+	}
+	messages, err := api.repository.ListMessages(request.Context(), senderID)
+	if err != nil {
+		api.internalError(writer, request, err)
+		return
+	}
+	writeJSON(writer, http.StatusOK, map[string]any{"items": messages})
+}
+
 func houseFromForm(form *multipart.Form) (domain.House, error) {
 	value := form.Value
 	landlordID, landlordErr := parsePositiveInt64(value, "landlordId")
