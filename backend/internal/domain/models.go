@@ -71,6 +71,7 @@ type HouseRepository interface {
 	CreateHouse(context.Context, *House) error
 	AddFavorite(context.Context, Favorite) error
 	RemoveFavorite(context.Context, Favorite) error
+	ListFavoriteHouses(context.Context, int64) ([]House, error)
 	CreateMessage(context.Context, *Message) error
 	Close() error
 }

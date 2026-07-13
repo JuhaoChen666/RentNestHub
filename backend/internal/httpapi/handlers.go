@@ -139,6 +139,20 @@ func (api *API) addFavorite(writer http.ResponseWriter, request *http.Request) {
 	writer.WriteHeader(http.StatusNoContent)
 }
 
+func (api *API) listFavorites(writer http.ResponseWriter, request *http.Request) {
+	tenantID, err := strconv.ParseInt(request.PathValue("tenantId"), 10, 64)
+	if err != nil || tenantID <= 0 {
+		writeError(writer, http.StatusBadRequest, "invalid tenant id")
+		return
+	}
+	houses, err := api.repository.ListFavoriteHouses(request.Context(), tenantID)
+	if err != nil {
+		api.internalError(writer, request, err)
+		return
+	}
+	writeJSON(writer, http.StatusOK, map[string]any{"items": houses})
+}
+
 func (api *API) removeFavorite(writer http.ResponseWriter, request *http.Request) {
 	tenantID, tenantErr := strconv.ParseInt(request.PathValue("tenantId"), 10, 64)
 	houseID, houseErr := strconv.ParseInt(request.PathValue("houseId"), 10, 64)

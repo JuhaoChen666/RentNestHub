@@ -205,6 +205,31 @@ func (repository *Repository) RemoveFavorite(ctx context.Context, favorite domai
 	return err
 }
 
+func (repository *Repository) ListFavoriteHouses(ctx context.Context, tenantID int64) ([]domain.House, error) {
+	rows, err := repository.db.QueryContext(ctx, `
+		SELECT h.id, h.landlord_id, h.title, h.description, h.city, h.district, h.address,
+		       h.monthly_rent, h.bedrooms, h.bathrooms, h.area_sqm, h.amenities,
+		       h.image_urls, h.status, h.created_at
+		FROM favorites f
+		JOIN houses h ON h.id = f.house_id
+		WHERE f.tenant_id = ? AND h.status = 'active'
+		ORDER BY f.created_at DESC`, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	houses := make([]domain.House, 0)
+	for rows.Next() {
+		house, err := scanHouse(rows)
+		if err != nil {
+			return nil, err
+		}
+		houses = append(houses, house)
+	}
+	return houses, rows.Err()
+}
+
 func (repository *Repository) CreateMessage(ctx context.Context, message *domain.Message) error {
 	result, err := repository.db.ExecContext(ctx, `
 		INSERT INTO messages (house_id, sender_id, content)
