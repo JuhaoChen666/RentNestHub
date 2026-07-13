@@ -631,7 +631,33 @@ h1 {
 }
 
 .empty-state p {
-  margin: 0;
+	margin: 0;
+}
+
+.message-list {
+	display: grid;
+	gap: 12px;
+}
+
+.message-record {
+	box-shadow: none;
+}
+
+.message-record-head {
+	display: flex;
+	justify-content: space-between;
+	gap: 16px;
+}
+
+.message-record time {
+	color: var(--muted);
+	font-size: 12px;
+}
+
+.message-record p {
+	margin: 12px 0 0;
+	color: var(--muted);
+	line-height: 1.6;
 }
 
 .dialog-backdrop {

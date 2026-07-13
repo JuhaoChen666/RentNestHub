@@ -61,6 +61,10 @@ func (fakeRepository) CreateMessage(context.Context, *domain.Message) error {
 	return nil
 }
 
+func (fakeRepository) ListMessages(context.Context, int64) ([]domain.Message, error) {
+	return nil, nil
+}
+
 func (fakeRepository) Close() error {
 	return nil
 }

@@ -1,6 +1,7 @@
 import type {
   House,
   HouseFilters,
+  InquiryMessage,
   ListingResult,
   RecommendationResult,
 } from "./types";
@@ -74,6 +75,11 @@ export function sendMessage(houseId: number, content: string): Promise<void> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ senderId: 2, houseId, content }),
   });
+}
+
+export async function listInquiryMessages(): Promise<InquiryMessage[]> {
+  const data = await request<{ items: InquiryMessage[] }>("/api/v1/messages/2");
+  return data.items;
 }
 
 export function publishHouse(form: FormData): Promise<House> {

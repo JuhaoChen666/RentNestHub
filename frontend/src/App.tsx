@@ -25,6 +25,7 @@ import {
 } from "react";
 import {
   favoriteHouse,
+  listInquiryMessages,
   listFavoriteHouses,
   listHouses,
   publishHouse,
@@ -32,6 +33,7 @@ import {
   sendMessage,
   unfavoriteHouse,
 } from "./api";
+import { MessageList } from "@/components/MessageList";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -48,6 +50,7 @@ import { Textarea } from "@/components/ui/textarea";
 import type {
   House,
   HouseFilters,
+  InquiryMessage,
   ListingMeta,
   Recommendation,
   RecommendationResult,
@@ -77,12 +80,13 @@ function App() {
   const [houses, setHouses] = useState<House[]>([]);
   const [listingMeta, setListingMeta] = useState(initialListingMeta);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+  const [inquiryMessages, setInquiryMessages] = useState<InquiryMessage[]>([]);
   const [favoriteHouses, setFavoriteHouses] = useState<House[]>([]);
   const [recommendationMode, setRecommendationMode] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
-  const [activeView, setActiveView] = useState<"browse" | "recommend" | "favorites">("browse");
+  const [activeView, setActiveView] = useState<"browse" | "recommend" | "favorites" | "messages">("browse");
   const [favorites, setFavorites] = useState<Set<number>>(new Set());
   const [publishOpen, setPublishOpen] = useState(false);
   const [messageHouse, setMessageHouse] = useState<House | null>(null);
@@ -155,6 +159,21 @@ function App() {
     await loadHouses(filters, listingMeta.offset + listingMeta.count, true);
   }
 
+  async function showMessages() {
+    setActiveView("messages");
+    setLoading(true);
+    setError("");
+    try {
+      setInquiryMessages(await listInquiryMessages());
+    } catch (messagesError) {
+      setError(
+        messagesError instanceof Error ? messagesError.message : "消息加载失败",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function toggleFavorite(houseId: number) {
     if (favorites.has(houseId)) {
       try {
@@ -186,7 +205,11 @@ function App() {
 
   return (
     <div className="app-shell">
-      <Header onFavorites={() => void showFavorites()} onPublish={() => setPublishOpen(true)} />
+      <Header
+        onFavorites={() => void showFavorites()}
+        onMessages={() => void showMessages()}
+        onPublish={() => setPublishOpen(true)}
+      />
 
       <main>
         <section className="workspace-head">
@@ -273,6 +296,8 @@ function App() {
                     ? "筛选结果"
                     : activeView === "favorites"
                       ? "我的收藏"
+                      : activeView === "messages"
+                        ? "我的消息"
                       : "专属推荐"}
                 </p>
                 <h2>
@@ -280,6 +305,8 @@ function App() {
                     ? `${visibleHouses.length} 套可选房源`
                     : activeView === "favorites"
                       ? `${visibleHouses.length} 套已收藏房源`
+                      : activeView === "messages"
+                        ? `${inquiryMessages.length} 条咨询记录`
                       : "根据你的需求排序"}
                 </h2>
                 {activeView === "recommend" && recommendationMode && (
@@ -321,6 +348,8 @@ function App() {
                   <Skeleton className="skeleton" key={item} />
                 ))}
               </div>
+            ) : activeView === "messages" ? (
+              <MessageList messages={inquiryMessages} />
             ) : visibleHouses.length > 0 ? (
               <>
                 <div className="house-grid">
@@ -385,9 +414,11 @@ function App() {
 
 function Header({
   onFavorites,
+  onMessages,
   onPublish,
 }: {
   onFavorites: () => void;
+  onMessages: () => void;
   onPublish: () => void;
 }) {
   return (
@@ -403,7 +434,7 @@ function Header({
           找房
         </a>
         <a href="#favorites" onClick={(event) => { event.preventDefault(); onFavorites(); }}>收藏</a>
-        <a href="#messages">消息</a>
+        <a href="#messages" onClick={(event) => { event.preventDefault(); onMessages(); }}>消息</a>
       </nav>
       <div className="topbar-actions">
         <Button

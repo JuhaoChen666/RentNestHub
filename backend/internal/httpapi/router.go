@@ -43,6 +43,7 @@ func New(dependencies Dependencies) http.Handler {
 	mux.HandleFunc("GET /api/v1/favorites/{tenantId}", api.listFavorites)
 	mux.HandleFunc("DELETE /api/v1/favorites/{tenantId}/{houseId}", api.removeFavorite)
 	mux.HandleFunc("POST /api/v1/messages", api.createMessage)
+	mux.HandleFunc("GET /api/v1/messages/{senderId}", api.listMessages)
 
 	return api.recoverPanic(api.logRequests(api.cors(mux)))
 }
