@@ -101,10 +101,5 @@ Feature branches should be merged into `develop` after review.
 
 ## ECS Deployment Notes
 
-- Allow inbound TCP `80` (or the value of `APP_PORT`) in the ECS security group.
-- Do not expose MySQL publicly in production. Remove the `3306` host mapping or
-  restrict it to a private network.
-- Replace all default passwords in `.env`.
-- Set `PUBLIC_BASE_URL` to the public HTTP(S) origin.
-- Put an HTTPS load balancer or reverse proxy in front of the stack for public
-  deployments.
+See [ECS deployment guide](docs/deployment/ecs.md) for environment setup,
+security groups, persistent volume backup, upgrades, and rollback.
