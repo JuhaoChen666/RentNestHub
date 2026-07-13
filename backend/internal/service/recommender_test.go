@@ -53,6 +53,10 @@ func (fakeRepository) RemoveFavorite(context.Context, domain.Favorite) error {
 	return nil
 }
 
+func (fakeRepository) ListFavoriteHouses(context.Context, int64) ([]domain.House, error) {
+	return nil, nil
+}
+
 func (fakeRepository) CreateMessage(context.Context, *domain.Message) error {
 	return nil
 }

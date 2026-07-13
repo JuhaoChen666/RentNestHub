@@ -26,11 +26,14 @@ import {
 import {
   favoriteHouse,
   listInquiryMessages,
+  listFavoriteHouses,
   listHouses,
   publishHouse,
   recommend,
   sendMessage,
+  unfavoriteHouse,
 } from "./api";
+import { MessageList } from "@/components/MessageList";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -78,11 +81,12 @@ function App() {
   const [listingMeta, setListingMeta] = useState(initialListingMeta);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [inquiryMessages, setInquiryMessages] = useState<InquiryMessage[]>([]);
+  const [favoriteHouses, setFavoriteHouses] = useState<House[]>([]);
   const [recommendationMode, setRecommendationMode] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
-  const [activeView, setActiveView] = useState<"browse" | "recommend" | "messages">("browse");
+  const [activeView, setActiveView] = useState<"browse" | "recommend" | "favorites" | "messages">("browse");
   const [favorites, setFavorites] = useState<Set<number>>(new Set());
   const [publishOpen, setPublishOpen] = useState(false);
   const [messageHouse, setMessageHouse] = useState<House | null>(null);
@@ -121,8 +125,10 @@ function App() {
     () =>
       activeView === "browse"
         ? houses
-        : recommendations.map((item) => item.house),
-    [activeView, houses, recommendations],
+        : activeView === "favorites"
+          ? favoriteHouses
+          : recommendations.map((item) => item.house),
+    [activeView, favoriteHouses, houses, recommendations],
   );
 
   async function handleSearch(event: FormEvent) {
@@ -130,6 +136,23 @@ function App() {
     setActiveView("browse");
     setRecommendationMode("");
     await loadHouses(filters, 0);
+  }
+
+  async function showFavorites() {
+    setActiveView("favorites");
+    setLoading(true);
+    setError("");
+    try {
+      const items = await listFavoriteHouses();
+      setFavoriteHouses(items);
+      setFavorites(new Set(items.map((house) => house.id)));
+    } catch (favoritesError) {
+      setError(
+        favoritesError instanceof Error ? favoritesError.message : "收藏加载失败",
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleLoadMore() {
@@ -153,11 +176,19 @@ function App() {
 
   async function toggleFavorite(houseId: number) {
     if (favorites.has(houseId)) {
-      setFavorites((current) => {
-        const next = new Set(current);
-        next.delete(houseId);
-        return next;
-      });
+      try {
+        await unfavoriteHouse(houseId);
+        setFavorites((current) => {
+          const next = new Set(current);
+          next.delete(houseId);
+          return next;
+        });
+        setFavoriteHouses((current) => current.filter((house) => house.id !== houseId));
+      } catch (favoriteError) {
+        setError(
+          favoriteError instanceof Error ? favoriteError.message : "取消收藏失败",
+        );
+      }
       return;
     }
     try {
@@ -174,7 +205,11 @@ function App() {
 
   return (
     <div className="app-shell">
-      <Header onMessages={() => void showMessages()} onPublish={() => setPublishOpen(true)} />
+      <Header
+        onFavorites={() => void showFavorites()}
+        onMessages={() => void showMessages()}
+        onPublish={() => setPublishOpen(true)}
+      />
 
       <main>
         <section className="workspace-head">
@@ -259,15 +294,19 @@ function App() {
                 <p className="eyebrow">
                   {activeView === "browse"
                     ? "筛选结果"
-                    : activeView === "messages"
-                      ? "我的消息"
+                    : activeView === "favorites"
+                      ? "我的收藏"
+                      : activeView === "messages"
+                        ? "我的消息"
                       : "专属推荐"}
                 </p>
                 <h2>
                   {activeView === "browse"
                     ? `${visibleHouses.length} 套可选房源`
-                    : activeView === "messages"
-                      ? `${inquiryMessages.length} 条咨询记录`
+                    : activeView === "favorites"
+                      ? `${visibleHouses.length} 套已收藏房源`
+                      : activeView === "messages"
+                        ? `${inquiryMessages.length} 条咨询记录`
                       : "根据你的需求排序"}
                 </h2>
                 {activeView === "recommend" && recommendationMode && (
@@ -319,9 +358,11 @@ function App() {
                       favorite={favorites.has(house.id)}
                       house={house}
                       key={house.id}
-                      recommendation={recommendations.find(
-                        (item) => item.house.id === house.id,
-                      )}
+                      recommendation={
+                        activeView === "recommend"
+                          ? recommendations.find((item) => item.house.id === house.id)
+                          : undefined
+                      }
                       onFavorite={() => void toggleFavorite(house.id)}
                       onMessage={() => setMessageHouse(house)}
                     />
@@ -372,9 +413,11 @@ function App() {
 }
 
 function Header({
+  onFavorites,
   onMessages,
   onPublish,
 }: {
+  onFavorites: () => void;
   onMessages: () => void;
   onPublish: () => void;
 }) {
@@ -390,7 +433,7 @@ function Header({
         <a className="active" href="#homes">
           找房
         </a>
-        <a href="#favorites">收藏</a>
+        <a href="#favorites" onClick={(event) => { event.preventDefault(); onFavorites(); }}>收藏</a>
         <a href="#messages" onClick={(event) => { event.preventDefault(); onMessages(); }}>消息</a>
       </nav>
       <div className="topbar-actions">

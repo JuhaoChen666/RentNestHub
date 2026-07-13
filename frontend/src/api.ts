@@ -58,6 +58,17 @@ export function favoriteHouse(houseId: number): Promise<void> {
   });
 }
 
+export function unfavoriteHouse(houseId: number): Promise<void> {
+  return request(`/api/v1/favorites/2/${houseId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function listFavoriteHouses(): Promise<House[]> {
+  const data = await request<{ items: House[] }>("/api/v1/favorites/2");
+  return data.items;
+}
+
 export function sendMessage(houseId: number, content: string): Promise<void> {
   return request("/api/v1/messages", {
     method: "POST",
