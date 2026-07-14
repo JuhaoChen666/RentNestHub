@@ -554,6 +554,50 @@ h1 {
   justify-content: end;
 }
 
+.owned-house-list {
+  display: grid;
+  gap: 14px;
+}
+
+.owned-house .card-content {
+  padding: 18px;
+}
+
+.owned-house-head,
+.owned-house-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.owned-house-head h3,
+.owned-house-head span {
+  margin: 0;
+}
+
+.owned-house-head span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.owned-house-controls {
+  justify-content: flex-start;
+  margin-top: 16px;
+}
+
+.owned-house-controls label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.owned-house-controls input {
+  width: 120px;
+}
+
 .load-more-row {
   display: flex;
   justify-content: center;
@@ -1203,6 +1247,12 @@ h1 {
 
   .review-image {
     max-width: 300px;
+  }
+
+  .owned-house-head,
+  .owned-house-controls {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .wide {

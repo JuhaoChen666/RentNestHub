@@ -161,6 +161,26 @@ export function publishHouse(form: FormData): Promise<House> {
   });
 }
 
+export async function listOwnedHouses(): Promise<House[]> {
+  const data = await request<{ items: House[] }>("/api/v1/houses/mine");
+  return data.items;
+}
+
+export function updateOwnedHouse(
+  houseId: number,
+  input: { monthlyRent?: number; status?: "rented" },
+): Promise<House> {
+  return request<House>(`/api/v1/houses/${houseId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteOwnedHouse(houseId: number): Promise<void> {
+  return request(`/api/v1/houses/${houseId}`, { method: "DELETE" });
+}
+
 export async function listPendingHouseReviews(): Promise<HouseReview[]> {
   const data = await request<{ items: HouseReview[] }>("/api/v1/admin/houses/pending");
   return data.items;

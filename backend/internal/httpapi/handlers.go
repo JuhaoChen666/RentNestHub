@@ -83,10 +83,6 @@ func (api *API) createHouse(writer http.ResponseWriter, request *http.Request) {
 		writeError(writer, http.StatusUnauthorized, "authentication required")
 		return
 	}
-	if user.Role != "admin" && user.Role != "landlord" {
-		writeError(writer, http.StatusForbidden, "only landlords can publish houses")
-		return
-	}
 	request.Body = http.MaxBytesReader(writer, request.Body, maxUploadSize)
 	if err := request.ParseMultipartForm(maxUploadSize); err != nil {
 		writeError(writer, http.StatusBadRequest, "invalid form or upload exceeds 20 MB")
@@ -110,6 +106,104 @@ func (api *API) createHouse(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 	writeJSON(writer, http.StatusCreated, house)
+}
+
+func (api *API) listOwnedHouses(writer http.ResponseWriter, request *http.Request) {
+	user, ok := api.currentUser(request.Context(), request)
+	if !ok {
+		writeError(writer, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	houses, err := api.repository.ListOwnedHouses(request.Context(), user.ID)
+	if err != nil {
+		api.internalError(writer, request, err)
+		return
+	}
+	writeJSON(writer, http.StatusOK, map[string]any{"items": houses})
+}
+
+func (api *API) updateOwnedHouse(writer http.ResponseWriter, request *http.Request) {
+	house, _, ok := api.ownedHouse(writer, request)
+	if !ok {
+		return
+	}
+	var input struct {
+		MonthlyRent *int   `json:"monthlyRent"`
+		Status      string `json:"status"`
+	}
+	if err := decodeJSON(request, &input); err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+	if input.MonthlyRent == nil && input.Status == "" {
+		writeError(writer, http.StatusBadRequest, "monthlyRent or status is required")
+		return
+	}
+	if input.MonthlyRent != nil {
+		if *input.MonthlyRent < 1 || *input.MonthlyRent > 200000 {
+			writeError(writer, http.StatusBadRequest, "monthlyRent must be between 1 and 200000")
+			return
+		}
+		if err := api.repository.UpdateHouseRent(request.Context(), house.ID, *input.MonthlyRent); err != nil {
+			api.internalError(writer, request, err)
+			return
+		}
+		house.MonthlyRent = *input.MonthlyRent
+	}
+	if input.Status != "" {
+		if input.Status != "rented" {
+			writeError(writer, http.StatusBadRequest, "status can only be rented")
+			return
+		}
+		if err := api.repository.UpdateHouseStatus(request.Context(), house.ID, input.Status); err != nil {
+			api.internalError(writer, request, err)
+			return
+		}
+		house.Status = input.Status
+	}
+	writeJSON(writer, http.StatusOK, house)
+}
+
+func (api *API) deleteOwnedHouse(writer http.ResponseWriter, request *http.Request) {
+	house, _, ok := api.ownedHouse(writer, request)
+	if !ok {
+		return
+	}
+	if err := api.repository.DeleteHouse(request.Context(), house.ID); errors.Is(err, mysqlrepo.ErrNotFound) {
+		writeError(writer, http.StatusNotFound, "house not found")
+		return
+	} else if err != nil {
+		api.internalError(writer, request, err)
+		return
+	}
+	writer.WriteHeader(http.StatusNoContent)
+}
+
+func (api *API) ownedHouse(writer http.ResponseWriter, request *http.Request) (domain.House, domain.User, bool) {
+	user, ok := api.currentUser(request.Context(), request)
+	if !ok {
+		writeError(writer, http.StatusUnauthorized, "authentication required")
+		return domain.House{}, domain.User{}, false
+	}
+	houseID, err := strconv.ParseInt(request.PathValue("id"), 10, 64)
+	if err != nil || houseID <= 0 {
+		writeError(writer, http.StatusBadRequest, "invalid house id")
+		return domain.House{}, domain.User{}, false
+	}
+	house, err := api.repository.GetHouse(request.Context(), houseID)
+	if errors.Is(err, mysqlrepo.ErrNotFound) {
+		writeError(writer, http.StatusNotFound, "house not found")
+		return domain.House{}, domain.User{}, false
+	}
+	if err != nil {
+		api.internalError(writer, request, err)
+		return domain.House{}, domain.User{}, false
+	}
+	if user.Role != "admin" && house.LandlordID != user.ID {
+		writeError(writer, http.StatusForbidden, "only the publisher can manage this house")
+		return domain.House{}, domain.User{}, false
+	}
+	return house, user, true
 }
 
 func (api *API) listPendingHouseReviews(writer http.ResponseWriter, request *http.Request) {
