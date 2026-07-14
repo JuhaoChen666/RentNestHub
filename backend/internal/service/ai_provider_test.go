@@ -15,9 +15,11 @@ import (
 func TestHTTPRecommendationProviderUsesAIResponse(t *testing.T) {
 	provider := HTTPRecommendationProvider{
 		config: AIProviderConfig{
-			URL:    "https://ai.example.test/chat",
-			APIKey: "test-key",
-			Model:  "test-model",
+			URL:             "https://ai.example.test/chat",
+			APIKey:          "test-key",
+			Model:           "test-model",
+			Thinking:        "disabled",
+			ReasoningEffort: "low",
 		},
 		client: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 			if request.URL.String() != "https://ai.example.test/chat" {
@@ -25,6 +27,14 @@ func TestHTTPRecommendationProviderUsesAIResponse(t *testing.T) {
 			}
 			if request.Header.Get("Authorization") != "Bearer test-key" {
 				t.Fatalf("missing auth header")
+			}
+			var payload chatCompletionRequest
+			if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+				t.Fatalf("decode request: %v", err)
+			}
+			if payload.Model != "test-model" || payload.Thinking.Type != "disabled" ||
+				payload.ReasoningEffort != "low" || payload.Stream {
+				t.Fatalf("unexpected DeepSeek request: %#v", payload)
 			}
 			return completionResponse(t, `{"recommendations":[{"id":2,"score":96,"reason":"更符合预算"}]}`), nil
 		})},
@@ -72,6 +82,20 @@ func TestHTTPRecommendationProviderFallsBackOnProviderError(t *testing.T) {
 	}
 	if len(result) != 2 || result[0].House.ID != 2 {
 		t.Fatalf("expected fallback recommendations, got %#v", result)
+	}
+}
+
+func TestRecommendationsFromAIContentExtractsJSONObject(t *testing.T) {
+	result, err := recommendationsFromAIContent(
+		"模型结果：\n```json\n{\"recommendations\":[{\"id\":2,\"score\":96,\"reason\":\"更符合预算\"}]}\n```",
+		[]domain.House{{ID: 2}},
+		3,
+	)
+	if err != nil {
+		t.Fatalf("parse recommendation: %v", err)
+	}
+	if len(result) != 1 || result[0].House.ID != 2 {
+		t.Fatalf("unexpected recommendations: %#v", result)
 	}
 }
 

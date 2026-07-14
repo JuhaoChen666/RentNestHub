@@ -14,6 +14,8 @@ type RecommenderService struct {
 	provider   RecommendationProvider
 }
 
+const maxAICandidates = 12
+
 func NewRecommender(repository domain.HouseRepository) *RecommenderService {
 	return NewRecommenderWithProvider(repository, LocalRecommendationProvider{})
 }
@@ -93,6 +95,13 @@ func (service *RecommenderService) Recommend(
 	})
 	if err != nil {
 		return nil, err
+	}
+	if service.provider.Mode() == "ai-http" && len(houses) > maxAICandidates {
+		preRanked, _ := (LocalRecommendationProvider{}).Recommend(ctx, houses, request, maxAICandidates)
+		houses = make([]domain.House, 0, len(preRanked))
+		for _, item := range preRanked {
+			houses = append(houses, item.House)
+		}
 	}
 
 	return service.provider.Recommend(ctx, houses, request, limit)
