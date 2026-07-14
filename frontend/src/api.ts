@@ -1,5 +1,6 @@
 import type {
   House,
+  HouseUpdateInput,
   HouseFilters,
   InquiryMessage,
   ListingResult,
@@ -168,7 +169,7 @@ export async function listOwnedHouses(): Promise<House[]> {
 
 export function updateOwnedHouse(
   houseId: number,
-  input: { monthlyRent?: number; status?: "rented" },
+  input: HouseUpdateInput,
 ): Promise<House> {
   return request<House>(`/api/v1/houses/${houseId}`, {
     method: "PATCH",

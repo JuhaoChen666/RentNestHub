@@ -11,6 +11,7 @@ import {
   MapPin,
   MessageCircle,
   Plus,
+  Pencil,
   Search,
   Send,
   SlidersHorizontal,
@@ -67,6 +68,7 @@ import type {
   House,
   HouseFilters,
   HouseReview,
+  HouseUpdateInput,
   InquiryMessage,
   ListingMeta,
   Recommendation,
@@ -693,11 +695,12 @@ function OwnedHouseList({
   onDelete,
 }: {
   houses: House[];
-  onUpdate: (houseId: number, input: { monthlyRent?: number; status?: "rented" }) => Promise<House>;
+  onUpdate: (houseId: number, input: HouseUpdateInput) => Promise<House>;
   onDelete: (houseId: number) => Promise<void>;
 }) {
   const [processing, setProcessing] = useState<number | null>(null);
   const [error, setError] = useState("");
+  const [editingHouse, setEditingHouse] = useState<House | null>(null);
 
   if (houses.length === 0) {
     return <div className="empty-state"><Home size={28} /><h3>还没有发布房源</h3></div>;
@@ -712,23 +715,90 @@ function OwnedHouseList({
               <div><h3>{house.title}</h3><span>{house.city} · {house.district} · {house.address}</span></div>
               <Badge>{house.status === "active" ? "展示中" : house.status === "draft" ? "待审核" : house.status === "rented" ? "已出租" : "已下架"}</Badge>
             </div>
-            <form className="owned-house-controls" onSubmit={async (event) => {
-              event.preventDefault();
-              const price = Number(new FormData(event.currentTarget).get("monthlyRent"));
-              setProcessing(house.id);
-              setError("");
-              try { await onUpdate(house.id, { monthlyRent: price }); } catch (updateError) { setError(updateError instanceof Error ? updateError.message : "租金更新失败"); } finally { setProcessing(null); }
-            }}>
-              <label>月租（元）<Input defaultValue={house.monthlyRent} min="1" name="monthlyRent" required type="number" /></label>
-              <Button disabled={processing === house.id} type="submit" variant="outline">更新租金</Button>
+            <div className="owned-house-controls">
+              <Button aria-label="编辑房源" disabled={processing === house.id} onClick={() => setEditingHouse(house)} size="icon" title="编辑房源" type="button" variant="outline"><Pencil size={17} /></Button>
               {house.status !== "rented" && <Button disabled={processing === house.id} onClick={async () => { setProcessing(house.id); setError(""); try { await onUpdate(house.id, { status: "rented" }); } catch (updateError) { setError(updateError instanceof Error ? updateError.message : "操作失败"); } finally { setProcessing(null); } }} type="button" variant="outline">标记已出租</Button>}
               <Button aria-label="删除房源" disabled={processing === house.id} onClick={async () => { if (!window.confirm("删除后将同时清除相关收藏和咨询记录，确定继续吗？")) return; setProcessing(house.id); setError(""); try { await onDelete(house.id); } catch (deleteError) { setError(deleteError instanceof Error ? deleteError.message : "删除失败"); } finally { setProcessing(null); } }} size="icon" type="button" variant="ghost"><Trash2 size={17} /></Button>
-            </form>
+            </div>
           </CardContent>
         </Card>
       ))}
       {error && <p className="form-error">{error}</p>}
+      {editingHouse && <EditHouseDialog house={editingHouse} onClose={() => setEditingHouse(null)} onUpdated={async (input) => {
+        setProcessing(editingHouse.id);
+        setError("");
+        try {
+          await onUpdate(editingHouse.id, input);
+          setEditingHouse(null);
+        } catch (updateError) {
+          setError(updateError instanceof Error ? updateError.message : "房源更新失败");
+          throw updateError;
+        } finally {
+          setProcessing(null);
+        }
+      }} />}
     </div>
+  );
+}
+
+function EditHouseDialog({
+  house,
+  onClose,
+  onUpdated,
+}: {
+  house: House;
+  onClose: () => void;
+  onUpdated: (input: HouseUpdateInput) => Promise<void>;
+}) {
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSubmitting(true);
+    setError("");
+    const form = new FormData(event.currentTarget);
+    try {
+      await onUpdated({
+        title: String(form.get("title") ?? ""),
+        description: String(form.get("description") ?? ""),
+        city: String(form.get("city") ?? ""),
+        district: String(form.get("district") ?? ""),
+        address: String(form.get("address") ?? ""),
+        monthlyRent: Number(form.get("monthlyRent")),
+        areaSqm: Number(form.get("areaSqm")),
+        bedrooms: Number(form.get("bedrooms")),
+        bathrooms: Number(form.get("bathrooms")),
+        amenities: String(form.get("amenities") ?? "").split(",").map((value) => value.trim()).filter(Boolean),
+      });
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : "房源更新失败");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <DialogFrame title="编辑房源" onClose={onClose}>
+      <form className="dialog-form" onSubmit={handleSubmit}>
+        <label className="wide">房源标题<Input defaultValue={house.title} maxLength={120} name="title" required /></label>
+        <label>城市<Input defaultValue={house.city} maxLength={80} name="city" required /></label>
+        <label>区域<Input defaultValue={house.district} maxLength={80} name="district" required /></label>
+        <label className="wide">详细地址<Input defaultValue={house.address} maxLength={180} name="address" required /></label>
+        <label>月租（元）<Input defaultValue={house.monthlyRent} inputMode="numeric" max="200000" min="1" name="monthlyRent" required type="number" /></label>
+        <label>面积（m²）<Input defaultValue={house.areaSqm} inputMode="decimal" max="2000" min="1" name="areaSqm" required step="0.1" type="number" /></label>
+        <label>卧室<Input defaultValue={house.bedrooms} inputMode="numeric" max="20" min="1" name="bedrooms" required type="number" /></label>
+        <label>卫生间<Input defaultValue={house.bathrooms} inputMode="numeric" max="20" min="1" name="bathrooms" required type="number" /></label>
+        <label className="wide">配套设施<Input defaultValue={house.amenities.join(", ")} maxLength={360} name="amenities" placeholder="近地铁, 电梯, 可做饭" /></label>
+        <label className="wide">房源描述<Textarea defaultValue={house.description} maxLength={1000} name="description" required /></label>
+        <p className="wide form-hint">保存后房源将重新进入待审核状态，审核通过后恢复展示。</p>
+        {error && <p className="form-error">{error}</p>}
+        <div className="dialog-actions wide">
+          <Button className="text-button" onClick={onClose} type="button" variant="ghost">取消</Button>
+          <Button className="primary-button" disabled={submitting} type="submit"><Pencil size={17} />{submitting ? "正在提交..." : "提交审核"}</Button>
+        </div>
+      </form>
+    </DialogFrame>
   );
 }
 

@@ -49,7 +49,7 @@ func (fakeRepository) ListOwnedHouses(context.Context, int64) ([]domain.House, e
 	return nil, nil
 }
 
-func (fakeRepository) UpdateHouseRent(context.Context, int64, int) error {
+func (fakeRepository) UpdateHouse(context.Context, *domain.House) error {
 	return nil
 }
 

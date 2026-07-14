@@ -16,6 +16,22 @@ export interface House {
   createdAt: string;
 }
 
+export type HouseDetailsUpdate = Pick<
+  House,
+  | "title"
+  | "description"
+  | "city"
+  | "district"
+  | "address"
+  | "monthlyRent"
+  | "bedrooms"
+  | "bathrooms"
+  | "areaSqm"
+  | "amenities"
+>;
+
+export type HouseUpdateInput = HouseDetailsUpdate | { status: "rented" };
+
 export interface HouseReview {
   house: House;
   publisher: User;

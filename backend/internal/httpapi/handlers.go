@@ -128,27 +128,21 @@ func (api *API) updateOwnedHouse(writer http.ResponseWriter, request *http.Reque
 		return
 	}
 	var input struct {
-		MonthlyRent *int   `json:"monthlyRent"`
-		Status      string `json:"status"`
+		Title       string   `json:"title"`
+		Description string   `json:"description"`
+		City        string   `json:"city"`
+		District    string   `json:"district"`
+		Address     string   `json:"address"`
+		MonthlyRent int      `json:"monthlyRent"`
+		Bedrooms    int      `json:"bedrooms"`
+		Bathrooms   int      `json:"bathrooms"`
+		AreaSqm     float64  `json:"areaSqm"`
+		Amenities   []string `json:"amenities"`
+		Status      string   `json:"status"`
 	}
 	if err := decodeJSON(request, &input); err != nil {
 		writeError(writer, http.StatusBadRequest, err.Error())
 		return
-	}
-	if input.MonthlyRent == nil && input.Status == "" {
-		writeError(writer, http.StatusBadRequest, "monthlyRent or status is required")
-		return
-	}
-	if input.MonthlyRent != nil {
-		if *input.MonthlyRent < 1 || *input.MonthlyRent > 200000 {
-			writeError(writer, http.StatusBadRequest, "monthlyRent must be between 1 and 200000")
-			return
-		}
-		if err := api.repository.UpdateHouseRent(request.Context(), house.ID, *input.MonthlyRent); err != nil {
-			api.internalError(writer, request, err)
-			return
-		}
-		house.MonthlyRent = *input.MonthlyRent
 	}
 	if input.Status != "" {
 		if input.Status != "rented" {
@@ -160,8 +154,36 @@ func (api *API) updateOwnedHouse(writer http.ResponseWriter, request *http.Reque
 			return
 		}
 		house.Status = input.Status
+		writeJSON(writer, http.StatusOK, house)
+		return
 	}
-	writeJSON(writer, http.StatusOK, house)
+
+	updated := domain.House{
+		ID:          house.ID,
+		LandlordID:  house.LandlordID,
+		Title:       strings.TrimSpace(input.Title),
+		Description: strings.TrimSpace(input.Description),
+		City:        strings.TrimSpace(input.City),
+		District:    strings.TrimSpace(input.District),
+		Address:     strings.TrimSpace(input.Address),
+		MonthlyRent: input.MonthlyRent,
+		Bedrooms:    input.Bedrooms,
+		Bathrooms:   input.Bathrooms,
+		AreaSqm:     input.AreaSqm,
+		Amenities:   splitCSV(strings.Join(input.Amenities, ",")),
+		ImageURLs:   house.ImageURLs,
+		Status:      "draft",
+		CreatedAt:   house.CreatedAt,
+	}
+	if err := validateHouse(updated); err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := api.repository.UpdateHouse(request.Context(), &updated); err != nil {
+		api.internalError(writer, request, err)
+		return
+	}
+	writeJSON(writer, http.StatusOK, updated)
 }
 
 func (api *API) deleteOwnedHouse(writer http.ResponseWriter, request *http.Request) {
@@ -433,6 +455,32 @@ func houseFromForm(form *multipart.Form) (domain.House, error) {
 		return domain.House{}, errors.New("invalid house payload: " + strings.Join(validationErrors, "; "))
 	}
 	return house, nil
+}
+
+func validateHouse(house domain.House) error {
+	var validationErrors []string
+	if house.MonthlyRent < 1 || house.MonthlyRent > 200000 {
+		validationErrors = append(validationErrors, "monthlyRent must be between 1 and 200000")
+	}
+	if house.Bedrooms < 1 || house.Bedrooms > 20 {
+		validationErrors = append(validationErrors, "bedrooms must be between 1 and 20")
+	}
+	if house.Bathrooms < 1 || house.Bathrooms > 20 {
+		validationErrors = append(validationErrors, "bathrooms must be between 1 and 20")
+	}
+	if house.AreaSqm < 1 || house.AreaSqm > 2000 {
+		validationErrors = append(validationErrors, "areaSqm must be between 1 and 2000")
+	}
+	validationErrors = append(validationErrors, validateText("title", house.Title, 1, 120)...)
+	validationErrors = append(validationErrors, validateText("description", house.Description, 1, 1000)...)
+	validationErrors = append(validationErrors, validateText("city", house.City, 1, 80)...)
+	validationErrors = append(validationErrors, validateText("district", house.District, 1, 80)...)
+	validationErrors = append(validationErrors, validateText("address", house.Address, 1, 180)...)
+	validationErrors = append(validationErrors, validateAmenities(house.Amenities)...)
+	if len(validationErrors) > 0 {
+		return errors.New("invalid house payload: " + strings.Join(validationErrors, "; "))
+	}
+	return nil
 }
 
 func (api *API) saveImages(files []*multipart.FileHeader) ([]string, error) {

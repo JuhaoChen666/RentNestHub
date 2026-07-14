@@ -209,9 +209,29 @@ func (repository *Repository) ListOwnedHouses(ctx context.Context, ownerID int64
 	return houses, rows.Err()
 }
 
-func (repository *Repository) UpdateHouseRent(ctx context.Context, houseID int64, monthlyRent int) error {
-	result, err := repository.db.ExecContext(ctx,
-		"UPDATE houses SET monthly_rent = ? WHERE id = ?", monthlyRent, houseID,
+func (repository *Repository) UpdateHouse(ctx context.Context, house *domain.House) error {
+	amenities, err := json.Marshal(house.Amenities)
+	if err != nil {
+		return err
+	}
+
+	result, err := repository.db.ExecContext(ctx, `
+		UPDATE houses
+		SET title = ?, description = ?, city = ?, district = ?, address = ?,
+		    monthly_rent = ?, bedrooms = ?, bathrooms = ?, area_sqm = ?,
+		    amenities = ?, status = 'draft'
+		WHERE id = ?`,
+		house.Title,
+		house.Description,
+		house.City,
+		house.District,
+		house.Address,
+		house.MonthlyRent,
+		house.Bedrooms,
+		house.Bathrooms,
+		house.AreaSqm,
+		amenities,
+		house.ID,
 	)
 	if err != nil {
 		return err
