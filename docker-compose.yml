@@ -22,9 +22,28 @@ services:
       timeout: 5s
       retries: 20
 
+  redis:
+    image: docker.m.daocloud.io/library/redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  mailpit:
+    image: docker.m.daocloud.io/axllent/mailpit:v1.24
+    restart: unless-stopped
+    ports:
+      - "${MAILPIT_SMTP_PORT:-1025}:1025"
+      - "${MAILPIT_PORT:-8025}:8025"
+
   api:
     build:
       context: ./backend
+      network: host
     restart: unless-stopped
     environment:
       SERVER_PORT: "8081"
@@ -34,6 +53,13 @@ services:
       AI_API_URL: ${AI_API_URL:-}
       AI_API_KEY: ${AI_API_KEY:-}
       AI_MODEL: ${AI_MODEL:-}
+      REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-RentNestHub <no-reply@rentnesthub.local>}
     expose:
       - "8081"
     volumes:
@@ -41,10 +67,13 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
+      redis:
+        condition: service_healthy
 
   web:
     build:
       context: ./frontend
+      network: host
     restart: unless-stopped
     ports:
       - "${APP_PORT:-8080}:80"
