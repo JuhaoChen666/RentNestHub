@@ -14,9 +14,11 @@ import (
 )
 
 type AIProviderConfig struct {
-	URL    string
-	APIKey string
-	Model  string
+	URL             string
+	APIKey          string
+	Model           string
+	Thinking        string
+	ReasoningEffort string
 }
 
 func NewRecommendationProvider(config AIProviderConfig) RecommendationProvider {
@@ -27,7 +29,7 @@ func NewRecommendationProvider(config AIProviderConfig) RecommendationProvider {
 	}
 	return HTTPRecommendationProvider{
 		config:   config,
-		client:   &http.Client{Timeout: 15 * time.Second},
+		client:   &http.Client{Timeout: 35 * time.Second},
 		fallback: LocalRecommendationProvider{},
 	}
 }
@@ -76,10 +78,9 @@ func (provider HTTPRecommendationProvider) recommend(
 			{Role: "system", Content: aiRecommendationSystemPrompt},
 			{Role: "user", Content: string(payload)},
 		},
-		Temperature: 0.2,
-		ResponseFormat: &responseFormat{
-			Type: "json_object",
-		},
+		Thinking:        thinkingConfig{Type: provider.thinkingMode()},
+		ReasoningEffort: provider.reasoningEffort(),
+		Stream:          false,
 	})
 	if err != nil {
 		return nil, err
@@ -116,13 +117,29 @@ func (provider HTTPRecommendationProvider) recommend(
 	return recommendationsFromAIContent(completion.Choices[0].Message.Content, houses, limit)
 }
 
+func (provider HTTPRecommendationProvider) thinkingMode() string {
+	if provider.config.Thinking == "enabled" || provider.config.Thinking == "disabled" {
+		return provider.config.Thinking
+	}
+	return "disabled"
+}
+
+func (provider HTTPRecommendationProvider) reasoningEffort() string {
+	switch provider.config.ReasoningEffort {
+	case "low", "medium", "high":
+		return provider.config.ReasoningEffort
+	default:
+		return "low"
+	}
+}
+
 func recommendationsFromAIContent(
 	content string,
 	houses []domain.House,
 	limit int,
 ) ([]domain.Recommendation, error) {
 	var result aiRecommendationResponse
-	if err := json.Unmarshal([]byte(content), &result); err != nil {
+	if err := json.Unmarshal([]byte(extractJSONObject(content)), &result); err != nil {
 		return nil, err
 	}
 
@@ -152,16 +169,27 @@ func recommendationsFromAIContent(
 	return recommendations, nil
 }
 
+func extractJSONObject(content string) string {
+	content = strings.TrimSpace(content)
+	start := strings.Index(content, "{")
+	end := strings.LastIndex(content, "}")
+	if start < 0 || end < start {
+		return content
+	}
+	return content[start : end+1]
+}
+
 const aiRecommendationSystemPrompt = `Rank rental houses for the tenant request.
 Return only JSON in this shape:
 {"recommendations":[{"id":1,"score":92,"reason":"short Chinese reason"}]}
 Use only ids from the provided houses.`
 
 type chatCompletionRequest struct {
-	Model          string          `json:"model"`
-	Messages       []chatMessage   `json:"messages"`
-	Temperature    float64         `json:"temperature"`
-	ResponseFormat *responseFormat `json:"response_format,omitempty"`
+	Model           string         `json:"model"`
+	Messages        []chatMessage  `json:"messages"`
+	Thinking        thinkingConfig `json:"thinking"`
+	ReasoningEffort string         `json:"reasoning_effort"`
+	Stream          bool           `json:"stream"`
 }
 
 type chatMessage struct {
@@ -169,7 +197,7 @@ type chatMessage struct {
 	Content string `json:"content"`
 }
 
-type responseFormat struct {
+type thinkingConfig struct {
 	Type string `json:"type"`
 }
 
