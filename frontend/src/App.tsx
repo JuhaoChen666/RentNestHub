@@ -17,6 +17,7 @@ import {
   Sparkles,
   Upload,
   X,
+  Trash2,
 } from "lucide-react";
 import {
   type FormEvent,
@@ -29,8 +30,10 @@ import {
   clearAuthToken,
   confirmPasswordReset,
   currentUser,
+  deleteOwnedHouse,
   favoriteHouse,
   listInquiryMessages,
+  listOwnedHouses,
   listPendingHouseReviews,
   listFavoriteHouses,
   listHouses,
@@ -43,6 +46,7 @@ import {
   saveAuthToken,
   sendMessage,
   unfavoriteHouse,
+  updateOwnedHouse,
   updateProfile,
 } from "./api";
 import { MessageList } from "@/components/MessageList";
@@ -103,12 +107,13 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
-  const [activeView, setActiveView] = useState<"browse" | "recommend" | "favorites" | "messages" | "reviews">("browse");
+  const [activeView, setActiveView] = useState<"browse" | "recommend" | "favorites" | "messages" | "owned" | "reviews">("browse");
   const [favorites, setFavorites] = useState<Set<number>>(new Set());
   const [publishOpen, setPublishOpen] = useState(false);
   const [messageHouse, setMessageHouse] = useState<House | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [pendingReviews, setPendingReviews] = useState<HouseReview[]>([]);
+  const [ownedHouses, setOwnedHouses] = useState<House[]>([]);
 
   const loadHouses = useCallback(
     async (nextFilters: HouseFilters, offset = 0, append = false) => {
@@ -176,8 +181,10 @@ function App() {
         ? houses
         : activeView === "favorites"
           ? favoriteHouses
+          : activeView === "owned"
+            ? ownedHouses
           : recommendations.map((item) => item.house),
-    [activeView, favoriteHouses, houses, recommendations],
+    [activeView, favoriteHouses, houses, ownedHouses, recommendations],
   );
 
   if (checkingSession) {
@@ -244,6 +251,28 @@ function App() {
     }
   }
 
+  async function showOwnedHouses() {
+    setActiveView("owned");
+    setLoading(true);
+    setError("");
+    try {
+      setOwnedHouses(await listOwnedHouses());
+    } catch (ownedError) {
+      setError(ownedError instanceof Error ? ownedError.message : "我的房源加载失败");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!session || activeView !== "messages") return;
+    const refresh = () => {
+      void listInquiryMessages().then(setInquiryMessages).catch(() => undefined);
+    };
+    const timer = window.setInterval(refresh, 5000);
+    return () => window.clearInterval(timer);
+  }, [activeView, session]);
+
   async function toggleFavorite(houseId: number) {
     if (favorites.has(houseId)) {
       try {
@@ -281,6 +310,7 @@ function App() {
         onBrowse={() => setActiveView("browse")}
         onFavorites={() => void showFavorites()}
         onMessages={() => void showMessages()}
+        onOwned={() => void showOwnedHouses()}
         onPublish={() => setPublishOpen(true)}
         onReviews={() => void showReviews()}
         onProfile={() => setProfileOpen(true)}
@@ -374,6 +404,8 @@ function App() {
                       ? "我的收藏"
                       : activeView === "messages"
                         ? "我的消息"
+                        : activeView === "owned"
+                          ? "我的房源"
                         : activeView === "reviews"
                           ? "房源审核"
                       : "专属推荐"}
@@ -385,6 +417,8 @@ function App() {
                       ? `${visibleHouses.length} 套已收藏房源`
                       : activeView === "messages"
                         ? `${inquiryMessages.length} 条咨询记录`
+                        : activeView === "owned"
+                          ? `${ownedHouses.length} 套已发布房源`
                         : activeView === "reviews"
                           ? `${pendingReviews.length} 套待审核房源`
                       : "根据你的需求排序"}
@@ -443,6 +477,23 @@ function App() {
                 onReview={async (houseId, approved) => {
                   await reviewHouse(houseId, approved);
                   setPendingReviews((current) => current.filter((review) => review.house.id !== houseId));
+                }}
+              />
+            ) : activeView === "owned" ? (
+              <OwnedHouseList
+                houses={ownedHouses}
+                onDelete={async (houseId) => {
+                  await deleteOwnedHouse(houseId);
+                  setOwnedHouses((current) => current.filter((house) => house.id !== houseId));
+                  setHouses((current) => current.filter((house) => house.id !== houseId));
+                }}
+                onUpdate={async (houseId, input) => {
+                  const house = await updateOwnedHouse(houseId, input);
+                  setOwnedHouses((current) => current.map((item) => item.id === house.id ? house : item));
+                  setHouses((current) => house.status === "active"
+                    ? current.map((item) => item.id === house.id ? house : item)
+                    : current.filter((item) => item.id !== house.id));
+                  return house;
                 }}
               />
             ) : visibleHouses.length > 0 ? (
@@ -526,16 +577,18 @@ function Header({
   onBrowse,
   onFavorites,
   onMessages,
+  onOwned,
   onPublish,
   onReviews,
   onProfile,
   onLogout,
 }: {
-  activeView: "browse" | "recommend" | "favorites" | "messages" | "reviews";
+  activeView: "browse" | "recommend" | "favorites" | "messages" | "owned" | "reviews";
   user: User;
   onBrowse: () => void;
   onFavorites: () => void;
   onMessages: () => void;
+  onOwned: () => void;
   onPublish: () => void;
   onReviews: () => void;
   onProfile: () => void;
@@ -564,17 +617,11 @@ function Header({
         <a className={activeView === "messages" ? "active" : undefined} href="#messages" onClick={(event) => { event.preventDefault(); onMessages(); }}>消息</a>
       </nav>
       <div className="topbar-actions">
-        {user.role !== "tenant" && (
-          <Button
-            className="secondary-button"
-            onClick={onPublish}
-            type="button"
-            variant="secondary"
-          >
-            <Plus size={17} />
-            发布房源
-          </Button>
-        )}
+        <Button className="secondary-button" onClick={onOwned} type="button" variant="secondary">我的房源</Button>
+        <Button className="secondary-button" onClick={onPublish} type="button" variant="secondary">
+          <Plus size={17} />
+          发布房源
+        </Button>
         {user.role === "admin" && (
           <Button className="secondary-button" onClick={onReviews} type="button" variant="secondary">
             <ClipboardCheck size={17} />
@@ -632,6 +679,51 @@ function ReviewList({
               <Button disabled={processing === review.house.id} onClick={async () => { setProcessing(review.house.id); setError(""); try { await onReview(review.house.id, false); } catch (reviewError) { setError(reviewError instanceof Error ? reviewError.message : "审核失败"); } finally { setProcessing(null); } }} type="button" variant="outline">驳回</Button>
               <Button className="primary-button" disabled={processing === review.house.id} onClick={async () => { setProcessing(review.house.id); setError(""); try { await onReview(review.house.id, true); } catch (reviewError) { setError(reviewError instanceof Error ? reviewError.message : "审核失败"); } finally { setProcessing(null); } }} type="button">通过并展示</Button>
             </div>
+          </CardContent>
+        </Card>
+      ))}
+      {error && <p className="form-error">{error}</p>}
+    </div>
+  );
+}
+
+function OwnedHouseList({
+  houses,
+  onUpdate,
+  onDelete,
+}: {
+  houses: House[];
+  onUpdate: (houseId: number, input: { monthlyRent?: number; status?: "rented" }) => Promise<House>;
+  onDelete: (houseId: number) => Promise<void>;
+}) {
+  const [processing, setProcessing] = useState<number | null>(null);
+  const [error, setError] = useState("");
+
+  if (houses.length === 0) {
+    return <div className="empty-state"><Home size={28} /><h3>还没有发布房源</h3></div>;
+  }
+
+  return (
+    <div className="owned-house-list">
+      {houses.map((house) => (
+        <Card className="owned-house" key={house.id}>
+          <CardContent>
+            <div className="owned-house-head">
+              <div><h3>{house.title}</h3><span>{house.city} · {house.district} · {house.address}</span></div>
+              <Badge>{house.status === "active" ? "展示中" : house.status === "draft" ? "待审核" : house.status === "rented" ? "已出租" : "已下架"}</Badge>
+            </div>
+            <form className="owned-house-controls" onSubmit={async (event) => {
+              event.preventDefault();
+              const price = Number(new FormData(event.currentTarget).get("monthlyRent"));
+              setProcessing(house.id);
+              setError("");
+              try { await onUpdate(house.id, { monthlyRent: price }); } catch (updateError) { setError(updateError instanceof Error ? updateError.message : "租金更新失败"); } finally { setProcessing(null); }
+            }}>
+              <label>月租（元）<Input defaultValue={house.monthlyRent} min="1" name="monthlyRent" required type="number" /></label>
+              <Button disabled={processing === house.id} type="submit" variant="outline">更新租金</Button>
+              {house.status !== "rented" && <Button disabled={processing === house.id} onClick={async () => { setProcessing(house.id); setError(""); try { await onUpdate(house.id, { status: "rented" }); } catch (updateError) { setError(updateError instanceof Error ? updateError.message : "操作失败"); } finally { setProcessing(null); } }} type="button" variant="outline">标记已出租</Button>}
+              <Button aria-label="删除房源" disabled={processing === house.id} onClick={async () => { if (!window.confirm("删除后将同时清除相关收藏和咨询记录，确定继续吗？")) return; setProcessing(house.id); setError(""); try { await onDelete(house.id); } catch (deleteError) { setError(deleteError instanceof Error ? deleteError.message : "删除失败"); } finally { setProcessing(null); } }} size="icon" type="button" variant="ghost"><Trash2 size={17} /></Button>
+            </form>
           </CardContent>
         </Card>
       ))}
