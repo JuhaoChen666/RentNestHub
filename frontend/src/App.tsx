@@ -6,6 +6,8 @@ import {
   ChevronDown,
   Heart,
   Home,
+  ClipboardCheck,
+  LogOut,
   MapPin,
   MessageCircle,
   Plus,
@@ -24,14 +26,24 @@ import {
   useState,
 } from "react";
 import {
+  clearAuthToken,
+  confirmPasswordReset,
+  currentUser,
   favoriteHouse,
   listInquiryMessages,
+  listPendingHouseReviews,
   listFavoriteHouses,
   listHouses,
+  login,
   publishHouse,
   recommend,
+  reviewHouse,
+  register,
+  requestPasswordReset,
+  saveAuthToken,
   sendMessage,
   unfavoriteHouse,
+  updateProfile,
 } from "./api";
 import { MessageList } from "@/components/MessageList";
 import { Badge } from "@/components/ui/badge";
@@ -50,10 +62,13 @@ import { Textarea } from "@/components/ui/textarea";
 import type {
   House,
   HouseFilters,
+  HouseReview,
   InquiryMessage,
   ListingMeta,
   Recommendation,
   RecommendationResult,
+  AuthSession,
+  User,
 } from "./types";
 
 const fallbackImage =
@@ -76,6 +91,8 @@ const initialListingMeta: ListingMeta = {
 };
 
 function App() {
+  const [session, setSession] = useState<AuthSession | null>(null);
+  const [checkingSession, setCheckingSession] = useState(true);
   const [filters, setFilters] = useState(initialFilters);
   const [houses, setHouses] = useState<House[]>([]);
   const [listingMeta, setListingMeta] = useState(initialListingMeta);
@@ -86,10 +103,12 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
-  const [activeView, setActiveView] = useState<"browse" | "recommend" | "favorites" | "messages">("browse");
+  const [activeView, setActiveView] = useState<"browse" | "recommend" | "favorites" | "messages" | "reviews">("browse");
   const [favorites, setFavorites] = useState<Set<number>>(new Set());
   const [publishOpen, setPublishOpen] = useState(false);
   const [messageHouse, setMessageHouse] = useState<House | null>(null);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [pendingReviews, setPendingReviews] = useState<HouseReview[]>([]);
 
   const loadHouses = useCallback(
     async (nextFilters: HouseFilters, offset = 0, append = false) => {
@@ -118,8 +137,38 @@ function App() {
   );
 
   useEffect(() => {
-    void loadHouses(initialFilters);
-  }, [loadHouses]);
+    let active = true;
+    void currentUser()
+      .then((user) => {
+        if (active) setSession({ token: "", user });
+      })
+      .catch(() => clearAuthToken())
+      .finally(() => {
+        if (active) setCheckingSession(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (session) void loadHouses(initialFilters);
+  }, [loadHouses, session]);
+
+  function handleAuthenticated(nextSession: AuthSession) {
+    saveAuthToken(nextSession.token);
+    setSession(nextSession);
+  }
+
+  function handleLogout() {
+    clearAuthToken();
+    setSession(null);
+    setHouses([]);
+    setFavorites(new Set());
+    setFavoriteHouses([]);
+    setInquiryMessages([]);
+    setActiveView("browse");
+  }
 
   const visibleHouses = useMemo(
     () =>
@@ -130,6 +179,14 @@ function App() {
           : recommendations.map((item) => item.house),
     [activeView, favoriteHouses, houses, recommendations],
   );
+
+  if (checkingSession) {
+    return <div className="auth-loading">正在验证登录状态...</div>;
+  }
+
+  if (!session) {
+    return <AuthScreen onAuthenticated={handleAuthenticated} />;
+  }
 
   async function handleSearch(event: FormEvent) {
     event.preventDefault();
@@ -174,6 +231,19 @@ function App() {
     }
   }
 
+  async function showReviews() {
+    setActiveView("reviews");
+    setLoading(true);
+    setError("");
+    try {
+      setPendingReviews(await listPendingHouseReviews());
+    } catch (reviewsError) {
+      setError(reviewsError instanceof Error ? reviewsError.message : "审核列表加载失败");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function toggleFavorite(houseId: number) {
     if (favorites.has(houseId)) {
       try {
@@ -206,9 +276,15 @@ function App() {
   return (
     <div className="app-shell">
       <Header
+        activeView={activeView}
+        user={session.user}
+        onBrowse={() => setActiveView("browse")}
         onFavorites={() => void showFavorites()}
         onMessages={() => void showMessages()}
         onPublish={() => setPublishOpen(true)}
+        onReviews={() => void showReviews()}
+        onProfile={() => setProfileOpen(true)}
+        onLogout={handleLogout}
       />
 
       <main>
@@ -298,6 +374,8 @@ function App() {
                       ? "我的收藏"
                       : activeView === "messages"
                         ? "我的消息"
+                        : activeView === "reviews"
+                          ? "房源审核"
                       : "专属推荐"}
                 </p>
                 <h2>
@@ -307,6 +385,8 @@ function App() {
                       ? `${visibleHouses.length} 套已收藏房源`
                       : activeView === "messages"
                         ? `${inquiryMessages.length} 条咨询记录`
+                        : activeView === "reviews"
+                          ? `${pendingReviews.length} 套待审核房源`
                       : "根据你的需求排序"}
                 </h2>
                 {activeView === "recommend" && recommendationMode && (
@@ -349,7 +429,22 @@ function App() {
                 ))}
               </div>
             ) : activeView === "messages" ? (
-              <MessageList messages={inquiryMessages} />
+              <MessageList
+                currentUser={session.user}
+                messages={inquiryMessages}
+                onSend={async (houseId, recipientId, content) => {
+                  await sendMessage(houseId, content, recipientId);
+                  await showMessages();
+                }}
+              />
+            ) : activeView === "reviews" ? (
+              <ReviewList
+                reviews={pendingReviews}
+                onReview={async (houseId, approved) => {
+                  await reviewHouse(houseId, approved);
+                  setPendingReviews((current) => current.filter((review) => review.house.id !== houseId));
+                }}
+              />
             ) : visibleHouses.length > 0 ? (
               <>
                 <div className="house-grid">
@@ -397,7 +492,11 @@ function App() {
         <PublishDialog
           onClose={() => setPublishOpen(false)}
           onPublished={(house) => {
-            setHouses((current) => [house, ...current]);
+            if (house.status === "active") {
+              setHouses((current) => [house, ...current]);
+            } else {
+              setError("房源已提交，等待管理员审核后展示。");
+            }
             setPublishOpen(false);
           }}
         />
@@ -408,18 +507,39 @@ function App() {
           onClose={() => setMessageHouse(null)}
         />
       )}
+      {profileOpen && (
+        <ProfileDialog
+          user={session.user}
+          onClose={() => setProfileOpen(false)}
+          onUpdated={(user) =>
+            setSession((current) => (current ? { ...current, user } : current))
+          }
+        />
+      )}
     </div>
   );
 }
 
 function Header({
+  activeView,
+  user,
+  onBrowse,
   onFavorites,
   onMessages,
   onPublish,
+  onReviews,
+  onProfile,
+  onLogout,
 }: {
+  activeView: "browse" | "recommend" | "favorites" | "messages" | "reviews";
+  user: User;
+  onBrowse: () => void;
   onFavorites: () => void;
   onMessages: () => void;
   onPublish: () => void;
+  onReviews: () => void;
+  onProfile: () => void;
+  onLogout: () => void;
 }) {
   return (
     <header className="topbar">
@@ -430,27 +550,253 @@ function Header({
         <span>RentNestHub</span>
       </a>
       <nav aria-label="主导航">
-        <a className="active" href="#homes">
+        <a
+          className={activeView === "browse" || activeView === "recommend" ? "active" : undefined}
+          href="#homes"
+          onClick={(event) => {
+            event.preventDefault();
+            onBrowse();
+          }}
+        >
           找房
         </a>
-        <a href="#favorites" onClick={(event) => { event.preventDefault(); onFavorites(); }}>收藏</a>
-        <a href="#messages" onClick={(event) => { event.preventDefault(); onMessages(); }}>消息</a>
+        <a className={activeView === "favorites" ? "active" : undefined} href="#favorites" onClick={(event) => { event.preventDefault(); onFavorites(); }}>收藏</a>
+        <a className={activeView === "messages" ? "active" : undefined} href="#messages" onClick={(event) => { event.preventDefault(); onMessages(); }}>消息</a>
       </nav>
       <div className="topbar-actions">
-        <Button
-          className="secondary-button"
-          onClick={onPublish}
-          type="button"
-          variant="secondary"
-        >
-          <Plus size={17} />
-          发布房源
+        {user.role !== "tenant" && (
+          <Button
+            className="secondary-button"
+            onClick={onPublish}
+            type="button"
+            variant="secondary"
+          >
+            <Plus size={17} />
+            发布房源
+          </Button>
+        )}
+        {user.role === "admin" && (
+          <Button className="secondary-button" onClick={onReviews} type="button" variant="secondary">
+            <ClipboardCheck size={17} />
+            审核房源
+          </Button>
+        )}
+        <Button className="avatar" aria-label="打开个人主页" onClick={onProfile} type="button" size="icon">
+          {user.displayName.slice(0, 1)}
         </Button>
-        <Button className="avatar" aria-label="用户中心" type="button" size="icon">
-          陈
+        <Button aria-label="退出登录" onClick={onLogout} size="icon" type="button" variant="ghost">
+          <LogOut size={17} />
         </Button>
       </div>
     </header>
+  );
+}
+
+function ReviewList({
+  reviews,
+  onReview,
+}: {
+  reviews: HouseReview[];
+  onReview: (houseId: number, approved: boolean) => Promise<void>;
+}) {
+  const [processing, setProcessing] = useState<number | null>(null);
+  const [error, setError] = useState("");
+
+  if (reviews.length === 0) {
+    return <div className="empty-state"><ClipboardCheck size={28} /><h3>没有待审核房源</h3></div>;
+  }
+
+  return (
+    <div className="review-list">
+      {reviews.map((review) => (
+        <Card className="review-card" key={review.house.id}>
+          <CardContent>
+            <div className="review-card-head">
+              <div>
+                <p className="eyebrow">待审核房源</p>
+                <h3>{review.house.title}</h3>
+              </div>
+              <Badge>发布者：{review.publisher.displayName}</Badge>
+            </div>
+            <div className="review-layout">
+              <img alt={`${review.house.title}房源图片`} className="review-image" src={review.house.imageUrls[0] || fallbackImage} />
+              <div className="review-details">
+                <p><strong>发布者信息</strong>{review.publisher.displayName}（{review.publisher.username}）· {review.publisher.email}</p>
+                <p><strong>区域地址</strong>{review.house.city} {review.house.district} · {review.house.address}</p>
+                <p><strong>租金户型</strong>¥{review.house.monthlyRent.toLocaleString()}/月 · {review.house.bedrooms} 室 {review.house.bathrooms} 卫 · {review.house.areaSqm} m²</p>
+                <p><strong>配套设施</strong>{review.house.amenities.join("、") || "未填写"}</p>
+                <p><strong>房源描述</strong>{review.house.description}</p>
+              </div>
+            </div>
+            <div className="review-actions">
+              <Button disabled={processing === review.house.id} onClick={async () => { setProcessing(review.house.id); setError(""); try { await onReview(review.house.id, false); } catch (reviewError) { setError(reviewError instanceof Error ? reviewError.message : "审核失败"); } finally { setProcessing(null); } }} type="button" variant="outline">驳回</Button>
+              <Button className="primary-button" disabled={processing === review.house.id} onClick={async () => { setProcessing(review.house.id); setError(""); try { await onReview(review.house.id, true); } catch (reviewError) { setError(reviewError instanceof Error ? reviewError.message : "审核失败"); } finally { setProcessing(null); } }} type="button">通过并展示</Button>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+      {error && <p className="form-error">{error}</p>}
+    </div>
+  );
+}
+
+function ProfileDialog({
+  user,
+  onClose,
+  onUpdated,
+}: {
+  user: User;
+  onClose: () => void;
+  onUpdated: (user: User) => void;
+}) {
+  const [email, setEmail] = useState(user.email);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSubmitting(true);
+    setError("");
+    try {
+      onUpdated(await updateProfile(email));
+      onClose();
+    } catch (profileError) {
+      setError(profileError instanceof Error ? profileError.message : "邮箱更新失败");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <DialogFrame title="个人主页" onClose={onClose}>
+      <form className="dialog-form" onSubmit={handleSubmit}>
+        <label className="wide">
+          用户名
+          <Input readOnly value={user.username} />
+        </label>
+        <label className="wide">
+          显示名称
+          <Input readOnly value={user.displayName} />
+        </label>
+        <label className="wide">
+          邮箱
+          <Input
+            autoComplete="email"
+            onChange={(event) => setEmail(event.target.value)}
+            required
+            type="email"
+            value={email}
+          />
+        </label>
+        {error && <p className="form-error">{error}</p>}
+        <div className="dialog-actions wide">
+          <Button className="text-button" onClick={onClose} type="button" variant="ghost">
+            取消
+          </Button>
+          <Button className="primary-button" disabled={submitting} type="submit">
+            {submitting ? "正在保存..." : "保存邮箱"}
+          </Button>
+        </div>
+      </form>
+    </DialogFrame>
+  );
+}
+
+function AuthScreen({ onAuthenticated }: { onAuthenticated: (session: AuthSession) => void }) {
+  const [mode, setMode] = useState<"login" | "register" | "forgot" | "reset">("login");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [resetEmail, setResetEmail] = useState("");
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSubmitting(true);
+    setError("");
+    setNotice("");
+    const form = new FormData(event.currentTarget);
+    try {
+      if (mode === "forgot") {
+        const email = String(form.get("email") ?? "");
+        await requestPasswordReset(email);
+        setResetEmail(email);
+        setNotice("验证码已发送，请查看邮箱。");
+        setMode("reset");
+        return;
+      }
+      if (mode === "reset") {
+        await confirmPasswordReset({
+          email: String(form.get("email") ?? ""),
+          code: String(form.get("code") ?? ""),
+          newPassword: String(form.get("newPassword") ?? ""),
+        });
+        setNotice("密码已更新，请使用新密码登录。");
+        setMode("login");
+        return;
+      }
+      const session = mode === "login"
+        ? await login({
+            identifier: String(form.get("identifier") ?? ""),
+            password: String(form.get("password") ?? ""),
+          })
+        : await register({
+            username: String(form.get("username") ?? ""),
+            displayName: String(form.get("displayName") ?? ""),
+            email: String(form.get("email") ?? ""),
+            password: String(form.get("password") ?? ""),
+          });
+      onAuthenticated(session);
+    } catch (authError) {
+      setError(authError instanceof Error ? authError.message : "认证失败");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <main className="auth-page">
+      <section className="auth-intro">
+        <span className="brand-mark"><Home size={21} /></span>
+        <h1>RentNestHub</h1>
+        <p>发现合适的居所，管理每一次真实的租房沟通。</p>
+      </section>
+      <Card className="auth-card">
+        <CardContent>
+          {(mode === "login" || mode === "register") && <div className="auth-tabs" role="tablist">
+            <Button aria-selected={mode === "login"} onClick={() => setMode("login")} type="button" variant={mode === "login" ? "default" : "ghost"}>登录</Button>
+            <Button aria-selected={mode === "register"} onClick={() => setMode("register")} type="button" variant={mode === "register" ? "default" : "ghost"}>注册</Button>
+          </div>}
+          <h2>{mode === "login" ? "欢迎回来" : mode === "register" ? "创建账户" : mode === "forgot" ? "找回密码" : "设置新密码"}</h2>
+          <form className="auth-form" onSubmit={handleSubmit}>
+            {mode === "login" ? (
+              <label>用户名或邮箱<Input autoComplete="username" name="identifier" required /></label>
+            ) : mode === "register" ? (
+              <>
+                <label>用户名<Input autoComplete="username" maxLength={80} minLength={3} name="username" required /></label>
+                <label>显示名称<Input maxLength={80} name="displayName" required /></label>
+                <label>邮箱<Input autoComplete="email" name="email" required type="email" /></label>
+              </>
+            ) : mode === "forgot" ? (
+              <label>注册邮箱<Input autoComplete="email" name="email" required type="email" /></label>
+            ) : (
+              <>
+                <label>注册邮箱<Input autoComplete="email" defaultValue={resetEmail} name="email" required type="email" /></label>
+                <label>邮箱验证码<Input inputMode="numeric" maxLength={6} name="code" required /></label>
+                <label>新密码<Input autoComplete="new-password" minLength={6} name="newPassword" required type="password" /></label>
+              </>
+            )}
+            {(mode === "login" || mode === "register") && <label>密码<Input autoComplete={mode === "login" ? "current-password" : "new-password"} minLength={6} name="password" required type="password" /></label>}
+            {error && <p className="auth-error">{error}</p>}
+            {notice && <p className="auth-notice">{notice}</p>}
+            <Button className="primary-button" disabled={submitting} type="submit">
+              {submitting ? "正在提交..." : mode === "login" ? "登录" : mode === "register" ? "注册并登录" : mode === "forgot" ? "发送验证码" : "更新密码"}
+            </Button>
+            {mode === "login" && <Button className="auth-link" onClick={() => setMode("forgot")} type="button" variant="ghost">忘记密码？</Button>}
+            {(mode === "forgot" || mode === "reset") && <Button className="auth-link" onClick={() => setMode("login")} type="button" variant="ghost">返回登录</Button>}
+          </form>
+        </CardContent>
+      </Card>
+    </main>
   );
 }
 
@@ -666,7 +1012,6 @@ function PublishDialog({
     setSubmitting(true);
     setError("");
     const form = new FormData(event.currentTarget);
-    form.set("landlordId", "1");
     try {
       onPublished(await publishHouse(form));
     } catch (publishError) {

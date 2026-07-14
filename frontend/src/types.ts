@@ -16,6 +16,11 @@ export interface House {
   createdAt: string;
 }
 
+export interface HouseReview {
+  house: House;
+  publisher: User;
+}
+
 export interface HouseFilters {
   city: string;
   district: string;
@@ -52,7 +57,22 @@ export interface InquiryMessage {
 	id: number;
 	houseId: number;
 	houseTitle: string;
-	senderId: number;
+	sender: User;
+	recipient: User;
 	content: string;
 	createdAt: string;
+}
+
+export interface User {
+	id: number;
+	role: "admin" | "landlord" | "tenant";
+	username: string;
+	displayName: string;
+	email: string;
+	createdAt: string;
+}
+
+export interface AuthSession {
+	token: string;
+	user: User;
 }
