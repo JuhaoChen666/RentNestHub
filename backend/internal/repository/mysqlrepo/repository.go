@@ -185,6 +185,67 @@ func (repository *Repository) CreateHouse(ctx context.Context, house *domain.Hou
 	return nil
 }
 
+func (repository *Repository) ListPendingHouseReviews(ctx context.Context) ([]domain.HouseReview, error) {
+	rows, err := repository.db.QueryContext(ctx, `
+		SELECT h.id, h.landlord_id, h.title, h.description, h.city, h.district, h.address,
+		       h.monthly_rent, h.bedrooms, h.bathrooms, h.area_sqm, h.amenities,
+		       h.image_urls, h.status, h.created_at,
+		       u.id, u.role, u.username, u.display_name, u.email, u.created_at
+		FROM houses h
+		JOIN users u ON u.id = h.landlord_id
+		WHERE h.status = 'draft'
+		ORDER BY h.created_at ASC, h.id ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	reviews := make([]domain.HouseReview, 0)
+	for rows.Next() {
+		var review domain.HouseReview
+		var amenitiesJSON, imagesJSON []byte
+		if err := rows.Scan(
+			&review.House.ID, &review.House.LandlordID, &review.House.Title, &review.House.Description,
+			&review.House.City, &review.House.District, &review.House.Address, &review.House.MonthlyRent,
+			&review.House.Bedrooms, &review.House.Bathrooms, &review.House.AreaSqm, &amenitiesJSON,
+			&imagesJSON, &review.House.Status, &review.House.CreatedAt, &review.Publisher.ID,
+			&review.Publisher.Role, &review.Publisher.Username, &review.Publisher.DisplayName,
+			&review.Publisher.Email, &review.Publisher.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(amenitiesJSON, &review.House.Amenities); err != nil {
+			return nil, fmt.Errorf("decode amenities: %w", err)
+		}
+		if err := json.Unmarshal(imagesJSON, &review.House.ImageURLs); err != nil {
+			return nil, fmt.Errorf("decode image urls: %w", err)
+		}
+		reviews = append(reviews, review)
+	}
+	return reviews, rows.Err()
+}
+
+func (repository *Repository) ReviewHouse(ctx context.Context, houseID int64, approved bool) error {
+	status := "archived"
+	if approved {
+		status = "active"
+	}
+	result, err := repository.db.ExecContext(ctx,
+		"UPDATE houses SET status = ? WHERE id = ? AND status = 'draft'", status, houseID,
+	)
+	if err != nil {
+		return err
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if changed == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (repository *Repository) AddFavorite(ctx context.Context, favorite domain.Favorite) error {
 	_, err := repository.db.ExecContext(ctx, `
 		INSERT INTO favorites (tenant_id, house_id)
@@ -232,10 +293,11 @@ func (repository *Repository) ListFavoriteHouses(ctx context.Context, tenantID i
 
 func (repository *Repository) CreateMessage(ctx context.Context, message *domain.Message) error {
 	result, err := repository.db.ExecContext(ctx, `
-		INSERT INTO messages (house_id, sender_id, content)
-		VALUES (?, ?, ?)`,
+		INSERT INTO messages (house_id, sender_id, recipient_id, content)
+		VALUES (?, ?, ?, ?)`,
 		message.HouseID,
-		message.SenderID,
+		message.Sender.ID,
+		message.Recipient.ID,
 		message.Content,
 	)
 	if err != nil {
@@ -249,13 +311,17 @@ func (repository *Repository) CreateMessage(ctx context.Context, message *domain
 	return nil
 }
 
-func (repository *Repository) ListMessages(ctx context.Context, senderID int64) ([]domain.Message, error) {
+func (repository *Repository) ListMessages(ctx context.Context, userID int64) ([]domain.Message, error) {
 	rows, err := repository.db.QueryContext(ctx, `
-		SELECT m.id, m.house_id, h.title, m.sender_id, m.content, m.created_at
+		SELECT m.id, m.house_id, h.title, m.content, m.created_at,
+		       sender.id, sender.role, sender.username, sender.display_name, sender.email,
+		       recipient.id, recipient.role, recipient.username, recipient.display_name, recipient.email
 		FROM messages m
 		JOIN houses h ON h.id = m.house_id
-		WHERE m.sender_id = ?
-		ORDER BY m.created_at DESC`, senderID)
+		JOIN users sender ON sender.id = m.sender_id
+		JOIN users recipient ON recipient.id = m.recipient_id
+		WHERE m.sender_id = ? OR m.recipient_id = ?
+		ORDER BY m.created_at ASC, m.id ASC`, userID, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -268,15 +334,36 @@ func (repository *Repository) ListMessages(ctx context.Context, senderID int64) 
 			&message.ID,
 			&message.HouseID,
 			&message.HouseTitle,
-			&message.SenderID,
 			&message.Content,
 			&message.CreatedAt,
+			&message.Sender.ID,
+			&message.Sender.Role,
+			&message.Sender.Username,
+			&message.Sender.DisplayName,
+			&message.Sender.Email,
+			&message.Recipient.ID,
+			&message.Recipient.Role,
+			&message.Recipient.Username,
+			&message.Recipient.DisplayName,
+			&message.Recipient.Email,
 		); err != nil {
 			return nil, err
 		}
 		messages = append(messages, message)
 	}
 	return messages, rows.Err()
+}
+
+func (repository *Repository) ConversationExists(ctx context.Context, houseID, firstUserID, secondUserID int64) (bool, error) {
+	var exists bool
+	err := repository.db.QueryRowContext(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM messages
+			WHERE house_id = ?
+			  AND ((sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?))
+		)`, houseID, firstUserID, secondUserID, secondUserID, firstUserID,
+	).Scan(&exists)
+	return exists, err
 }
 
 type scanner interface {
