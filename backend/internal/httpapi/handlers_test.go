@@ -60,6 +60,33 @@ func TestHouseFromFormRejectsOutOfRangeFields(t *testing.T) {
 	}
 }
 
+func TestValidateHouseRejectsIncompleteEdit(t *testing.T) {
+	err := validateHouse(domain.House{
+		Title:       "",
+		Description: "采光良好，交通便利。",
+		City:        "上海",
+		District:    "浦东新区",
+		Address:     "",
+		MonthlyRent: 0,
+		Bedrooms:    1,
+		Bathrooms:   1,
+		AreaSqm:     42,
+		Amenities:   []string{"近地铁"},
+	})
+	if err == nil {
+		t.Fatal("expected incomplete edit to be rejected")
+	}
+	for _, expected := range []string{
+		"title is required",
+		"address is required",
+		"monthlyRent must be between 1 and 200000",
+	} {
+		if !strings.Contains(err.Error(), expected) {
+			t.Fatalf("expected %q in %q", expected, err)
+		}
+	}
+}
+
 func TestDetectImageExtensionAcceptsSupportedImages(t *testing.T) {
 	cases := []struct {
 		name      string

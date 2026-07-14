@@ -554,6 +554,50 @@ h1 {
   justify-content: end;
 }
 
+.owned-house-list {
+  display: grid;
+  gap: 14px;
+}
+
+.owned-house .card-content {
+  padding: 18px;
+}
+
+.owned-house-head,
+.owned-house-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.owned-house-head h3,
+.owned-house-head span {
+  margin: 0;
+}
+
+.owned-house-head span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.owned-house-controls {
+  justify-content: flex-start;
+  margin-top: 16px;
+}
+
+.owned-house-controls label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.owned-house-controls input {
+  width: 120px;
+}
+
 .load-more-row {
   display: flex;
   justify-content: center;
@@ -1023,6 +1067,13 @@ h1 {
   font-size: 13px;
 }
 
+.form-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .message-form {
   display: grid;
   gap: 18px;
@@ -1127,9 +1178,25 @@ h1 {
     padding: 0 16px;
   }
 
-  .topbar nav,
-  .secondary-button {
+  .topbar nav {
     display: none;
+  }
+
+  .brand > span:last-child,
+  .mobile-action span {
+    display: none;
+  }
+
+  .topbar-actions {
+    justify-content: flex-end;
+    gap: 4px;
+  }
+
+  .topbar .mobile-action {
+    display: inline-flex;
+    width: 36px;
+    min-width: 36px;
+    padding: 0;
   }
 
   main {
@@ -1203,6 +1270,12 @@ h1 {
 
   .review-image {
     max-width: 300px;
+  }
+
+  .owned-house-head,
+  .owned-house-controls {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .wide {

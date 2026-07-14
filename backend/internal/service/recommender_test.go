@@ -45,6 +45,22 @@ func (fakeRepository) CreateHouse(context.Context, *domain.House) error {
 	return nil
 }
 
+func (fakeRepository) ListOwnedHouses(context.Context, int64) ([]domain.House, error) {
+	return nil, nil
+}
+
+func (fakeRepository) UpdateHouse(context.Context, *domain.House) error {
+	return nil
+}
+
+func (fakeRepository) UpdateHouseStatus(context.Context, int64, string) error {
+	return nil
+}
+
+func (fakeRepository) DeleteHouse(context.Context, int64) error {
+	return nil
+}
+
 func (fakeRepository) ListPendingHouseReviews(context.Context) ([]domain.HouseReview, error) {
 	return nil, nil
 }

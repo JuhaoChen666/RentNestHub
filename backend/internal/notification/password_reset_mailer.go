@@ -2,6 +2,7 @@ package notification
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"mime"
 	"net/mail"
@@ -44,7 +45,45 @@ func (mailer PasswordResetMailer) SendPasswordReset(_ context.Context, recipient
 		"",
 		passwordResetHTML(displayName, code),
 	}, "\r\n")
+	if mailer.config.Port == "465" {
+		return sendMailImplicitTLS(address, mailer.config.Host, auth, from.Address, []string{recipient}, []byte(message))
+	}
 	return smtp.SendMail(address, auth, from.Address, []string{recipient}, []byte(message))
+}
+
+func sendMailImplicitTLS(address, host string, auth smtp.Auth, from string, recipients []string, message []byte) error {
+	connection, err := tls.Dial("tcp", address, &tls.Config{ServerName: host, MinVersion: tls.VersionTLS12})
+	if err != nil {
+		return err
+	}
+	client, err := smtp.NewClient(connection, host)
+	if err != nil {
+		connection.Close()
+		return err
+	}
+	defer client.Quit()
+	if auth != nil {
+		if err := client.Auth(auth); err != nil {
+			return err
+		}
+	}
+	if err := client.Mail(from); err != nil {
+		return err
+	}
+	for _, recipient := range recipients {
+		if err := client.Rcpt(recipient); err != nil {
+			return err
+		}
+	}
+	writer, err := client.Data()
+	if err != nil {
+		return err
+	}
+	if _, err := writer.Write(message); err != nil {
+		writer.Close()
+		return err
+	}
+	return writer.Close()
 }
 
 func passwordResetHTML(displayName, code string) string {

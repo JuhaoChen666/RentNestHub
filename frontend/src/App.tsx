@@ -11,12 +11,14 @@ import {
   MapPin,
   MessageCircle,
   Plus,
+  Pencil,
   Search,
   Send,
   SlidersHorizontal,
   Sparkles,
   Upload,
   X,
+  Trash2,
 } from "lucide-react";
 import {
   type FormEvent,
@@ -29,8 +31,10 @@ import {
   clearAuthToken,
   confirmPasswordReset,
   currentUser,
+  deleteOwnedHouse,
   favoriteHouse,
   listInquiryMessages,
+  listOwnedHouses,
   listPendingHouseReviews,
   listFavoriteHouses,
   listHouses,
@@ -43,6 +47,7 @@ import {
   saveAuthToken,
   sendMessage,
   unfavoriteHouse,
+  updateOwnedHouse,
   updateProfile,
 } from "./api";
 import { MessageList } from "@/components/MessageList";
@@ -63,6 +68,7 @@ import type {
   House,
   HouseFilters,
   HouseReview,
+  HouseUpdateInput,
   InquiryMessage,
   ListingMeta,
   Recommendation,
@@ -103,12 +109,13 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
-  const [activeView, setActiveView] = useState<"browse" | "recommend" | "favorites" | "messages" | "reviews">("browse");
+  const [activeView, setActiveView] = useState<"browse" | "recommend" | "favorites" | "messages" | "owned" | "reviews">("browse");
   const [favorites, setFavorites] = useState<Set<number>>(new Set());
   const [publishOpen, setPublishOpen] = useState(false);
   const [messageHouse, setMessageHouse] = useState<House | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [pendingReviews, setPendingReviews] = useState<HouseReview[]>([]);
+  const [ownedHouses, setOwnedHouses] = useState<House[]>([]);
 
   const loadHouses = useCallback(
     async (nextFilters: HouseFilters, offset = 0, append = false) => {
@@ -176,9 +183,20 @@ function App() {
         ? houses
         : activeView === "favorites"
           ? favoriteHouses
+          : activeView === "owned"
+            ? ownedHouses
           : recommendations.map((item) => item.house),
-    [activeView, favoriteHouses, houses, recommendations],
+    [activeView, favoriteHouses, houses, ownedHouses, recommendations],
   );
+
+  useEffect(() => {
+    if (!session || activeView !== "messages") return;
+    const refresh = () => {
+      void listInquiryMessages().then(setInquiryMessages).catch(() => undefined);
+    };
+    const timer = window.setInterval(refresh, 5000);
+    return () => window.clearInterval(timer);
+  }, [activeView, session]);
 
   if (checkingSession) {
     return <div className="auth-loading">正在验证登录状态...</div>;
@@ -244,6 +262,19 @@ function App() {
     }
   }
 
+  async function showOwnedHouses() {
+    setActiveView("owned");
+    setLoading(true);
+    setError("");
+    try {
+      setOwnedHouses(await listOwnedHouses());
+    } catch (ownedError) {
+      setError(ownedError instanceof Error ? ownedError.message : "我的房源加载失败");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function toggleFavorite(houseId: number) {
     if (favorites.has(houseId)) {
       try {
@@ -281,6 +312,7 @@ function App() {
         onBrowse={() => setActiveView("browse")}
         onFavorites={() => void showFavorites()}
         onMessages={() => void showMessages()}
+        onOwned={() => void showOwnedHouses()}
         onPublish={() => setPublishOpen(true)}
         onReviews={() => void showReviews()}
         onProfile={() => setProfileOpen(true)}
@@ -374,6 +406,8 @@ function App() {
                       ? "我的收藏"
                       : activeView === "messages"
                         ? "我的消息"
+                        : activeView === "owned"
+                          ? "我的房源"
                         : activeView === "reviews"
                           ? "房源审核"
                       : "专属推荐"}
@@ -385,6 +419,8 @@ function App() {
                       ? `${visibleHouses.length} 套已收藏房源`
                       : activeView === "messages"
                         ? `${inquiryMessages.length} 条咨询记录`
+                        : activeView === "owned"
+                          ? `${ownedHouses.length} 套已发布房源`
                         : activeView === "reviews"
                           ? `${pendingReviews.length} 套待审核房源`
                       : "根据你的需求排序"}
@@ -443,6 +479,23 @@ function App() {
                 onReview={async (houseId, approved) => {
                   await reviewHouse(houseId, approved);
                   setPendingReviews((current) => current.filter((review) => review.house.id !== houseId));
+                }}
+              />
+            ) : activeView === "owned" ? (
+              <OwnedHouseList
+                houses={ownedHouses}
+                onDelete={async (houseId) => {
+                  await deleteOwnedHouse(houseId);
+                  setOwnedHouses((current) => current.filter((house) => house.id !== houseId));
+                  setHouses((current) => current.filter((house) => house.id !== houseId));
+                }}
+                onUpdate={async (houseId, input) => {
+                  const house = await updateOwnedHouse(houseId, input);
+                  setOwnedHouses((current) => current.map((item) => item.id === house.id ? house : item));
+                  setHouses((current) => house.status === "active"
+                    ? current.map((item) => item.id === house.id ? house : item)
+                    : current.filter((item) => item.id !== house.id));
+                  return house;
                 }}
               />
             ) : visibleHouses.length > 0 ? (
@@ -526,16 +579,18 @@ function Header({
   onBrowse,
   onFavorites,
   onMessages,
+  onOwned,
   onPublish,
   onReviews,
   onProfile,
   onLogout,
 }: {
-  activeView: "browse" | "recommend" | "favorites" | "messages" | "reviews";
+  activeView: "browse" | "recommend" | "favorites" | "messages" | "owned" | "reviews";
   user: User;
   onBrowse: () => void;
   onFavorites: () => void;
   onMessages: () => void;
+  onOwned: () => void;
   onPublish: () => void;
   onReviews: () => void;
   onProfile: () => void;
@@ -564,21 +619,18 @@ function Header({
         <a className={activeView === "messages" ? "active" : undefined} href="#messages" onClick={(event) => { event.preventDefault(); onMessages(); }}>消息</a>
       </nav>
       <div className="topbar-actions">
-        {user.role !== "tenant" && (
-          <Button
-            className="secondary-button"
-            onClick={onPublish}
-            type="button"
-            variant="secondary"
-          >
-            <Plus size={17} />
-            发布房源
-          </Button>
-        )}
+        <Button aria-label="我的房源" className="secondary-button mobile-action" onClick={onOwned} title="我的房源" type="button" variant="secondary">
+          <Building2 size={17} />
+          <span>我的房源</span>
+        </Button>
+        <Button aria-label="发布房源" className="secondary-button mobile-action" onClick={onPublish} title="发布房源" type="button" variant="secondary">
+          <Plus size={17} />
+          <span>发布房源</span>
+        </Button>
         {user.role === "admin" && (
-          <Button className="secondary-button" onClick={onReviews} type="button" variant="secondary">
+          <Button aria-label="审核房源" className="secondary-button mobile-action" onClick={onReviews} title="审核房源" type="button" variant="secondary">
             <ClipboardCheck size={17} />
-            审核房源
+            <span>审核房源</span>
           </Button>
         )}
         <Button className="avatar" aria-label="打开个人主页" onClick={onProfile} type="button" size="icon">
@@ -637,6 +689,119 @@ function ReviewList({
       ))}
       {error && <p className="form-error">{error}</p>}
     </div>
+  );
+}
+
+function OwnedHouseList({
+  houses,
+  onUpdate,
+  onDelete,
+}: {
+  houses: House[];
+  onUpdate: (houseId: number, input: HouseUpdateInput) => Promise<House>;
+  onDelete: (houseId: number) => Promise<void>;
+}) {
+  const [processing, setProcessing] = useState<number | null>(null);
+  const [error, setError] = useState("");
+  const [editingHouse, setEditingHouse] = useState<House | null>(null);
+
+  if (houses.length === 0) {
+    return <div className="empty-state"><Home size={28} /><h3>还没有发布房源</h3></div>;
+  }
+
+  return (
+    <div className="owned-house-list">
+      {houses.map((house) => (
+        <Card className="owned-house" key={house.id}>
+          <CardContent>
+            <div className="owned-house-head">
+              <div><h3>{house.title}</h3><span>{house.city} · {house.district} · {house.address}</span></div>
+              <Badge>{house.status === "active" ? "展示中" : house.status === "draft" ? "待审核" : house.status === "rented" ? "已出租" : "已下架"}</Badge>
+            </div>
+            <div className="owned-house-controls">
+              <Button aria-label="编辑房源" disabled={processing === house.id} onClick={() => setEditingHouse(house)} size="icon" title="编辑房源" type="button" variant="outline"><Pencil size={17} /></Button>
+              {house.status !== "rented" && <Button disabled={processing === house.id} onClick={async () => { setProcessing(house.id); setError(""); try { await onUpdate(house.id, { status: "rented" }); } catch (updateError) { setError(updateError instanceof Error ? updateError.message : "操作失败"); } finally { setProcessing(null); } }} type="button" variant="outline">标记已出租</Button>}
+              <Button aria-label="删除房源" disabled={processing === house.id} onClick={async () => { if (!window.confirm("删除后将同时清除相关收藏和咨询记录，确定继续吗？")) return; setProcessing(house.id); setError(""); try { await onDelete(house.id); } catch (deleteError) { setError(deleteError instanceof Error ? deleteError.message : "删除失败"); } finally { setProcessing(null); } }} size="icon" type="button" variant="ghost"><Trash2 size={17} /></Button>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+      {error && <p className="form-error">{error}</p>}
+      {editingHouse && <EditHouseDialog house={editingHouse} onClose={() => setEditingHouse(null)} onUpdated={async (input) => {
+        setProcessing(editingHouse.id);
+        setError("");
+        try {
+          await onUpdate(editingHouse.id, input);
+          setEditingHouse(null);
+        } catch (updateError) {
+          setError(updateError instanceof Error ? updateError.message : "房源更新失败");
+          throw updateError;
+        } finally {
+          setProcessing(null);
+        }
+      }} />}
+    </div>
+  );
+}
+
+function EditHouseDialog({
+  house,
+  onClose,
+  onUpdated,
+}: {
+  house: House;
+  onClose: () => void;
+  onUpdated: (input: HouseUpdateInput) => Promise<void>;
+}) {
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSubmitting(true);
+    setError("");
+    const form = new FormData(event.currentTarget);
+    try {
+      await onUpdated({
+        title: String(form.get("title") ?? ""),
+        description: String(form.get("description") ?? ""),
+        city: String(form.get("city") ?? ""),
+        district: String(form.get("district") ?? ""),
+        address: String(form.get("address") ?? ""),
+        monthlyRent: Number(form.get("monthlyRent")),
+        areaSqm: Number(form.get("areaSqm")),
+        bedrooms: Number(form.get("bedrooms")),
+        bathrooms: Number(form.get("bathrooms")),
+        amenities: String(form.get("amenities") ?? "").split(",").map((value) => value.trim()).filter(Boolean),
+      });
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : "房源更新失败");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <DialogFrame title="编辑房源" onClose={onClose}>
+      <form className="dialog-form" onSubmit={handleSubmit}>
+        <label className="wide">房源标题<Input defaultValue={house.title} maxLength={120} name="title" required /></label>
+        <label>城市<Input defaultValue={house.city} maxLength={80} name="city" required /></label>
+        <label>区域<Input defaultValue={house.district} maxLength={80} name="district" required /></label>
+        <label className="wide">详细地址<Input defaultValue={house.address} maxLength={180} name="address" required /></label>
+        <label>月租（元）<Input defaultValue={house.monthlyRent} inputMode="numeric" max="200000" min="1" name="monthlyRent" required type="number" /></label>
+        <label>面积（m²）<Input defaultValue={house.areaSqm} inputMode="decimal" max="2000" min="1" name="areaSqm" required step="0.1" type="number" /></label>
+        <label>卧室<Input defaultValue={house.bedrooms} inputMode="numeric" max="20" min="1" name="bedrooms" required type="number" /></label>
+        <label>卫生间<Input defaultValue={house.bathrooms} inputMode="numeric" max="20" min="1" name="bathrooms" required type="number" /></label>
+        <label className="wide">配套设施<Input defaultValue={house.amenities.join(", ")} maxLength={360} name="amenities" placeholder="近地铁, 电梯, 可做饭" /></label>
+        <label className="wide">房源描述<Textarea defaultValue={house.description} maxLength={1000} name="description" required /></label>
+        <p className="wide form-hint">保存后房源将重新进入待审核状态，审核通过后恢复展示。</p>
+        {error && <p className="form-error">{error}</p>}
+        <div className="dialog-actions wide">
+          <Button className="text-button" onClick={onClose} type="button" variant="ghost">取消</Button>
+          <Button className="primary-button" disabled={submitting} type="submit"><Pencil size={17} />{submitting ? "正在提交..." : "提交审核"}</Button>
+        </div>
+      </form>
+    </DialogFrame>
   );
 }
 

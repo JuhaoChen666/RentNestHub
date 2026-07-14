@@ -185,6 +185,99 @@ func (repository *Repository) CreateHouse(ctx context.Context, house *domain.Hou
 	return nil
 }
 
+func (repository *Repository) ListOwnedHouses(ctx context.Context, ownerID int64) ([]domain.House, error) {
+	rows, err := repository.db.QueryContext(ctx, `
+		SELECT id, landlord_id, title, description, city, district, address,
+		       monthly_rent, bedrooms, bathrooms, area_sqm, amenities,
+		       image_urls, status, created_at
+		FROM houses
+		WHERE landlord_id = ?
+		ORDER BY created_at DESC, id DESC`, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	houses := make([]domain.House, 0)
+	for rows.Next() {
+		house, err := scanHouse(rows)
+		if err != nil {
+			return nil, err
+		}
+		houses = append(houses, house)
+	}
+	return houses, rows.Err()
+}
+
+func (repository *Repository) UpdateHouse(ctx context.Context, house *domain.House) error {
+	amenities, err := json.Marshal(house.Amenities)
+	if err != nil {
+		return err
+	}
+
+	result, err := repository.db.ExecContext(ctx, `
+		UPDATE houses
+		SET title = ?, description = ?, city = ?, district = ?, address = ?,
+		    monthly_rent = ?, bedrooms = ?, bathrooms = ?, area_sqm = ?,
+		    amenities = ?, status = 'draft'
+		WHERE id = ?`,
+		house.Title,
+		house.Description,
+		house.City,
+		house.District,
+		house.Address,
+		house.MonthlyRent,
+		house.Bedrooms,
+		house.Bathrooms,
+		house.AreaSqm,
+		amenities,
+		house.ID,
+	)
+	if err != nil {
+		return err
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if changed == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (repository *Repository) UpdateHouseStatus(ctx context.Context, houseID int64, status string) error {
+	result, err := repository.db.ExecContext(ctx,
+		"UPDATE houses SET status = ? WHERE id = ?", status, houseID,
+	)
+	if err != nil {
+		return err
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if changed == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (repository *Repository) DeleteHouse(ctx context.Context, houseID int64) error {
+	result, err := repository.db.ExecContext(ctx, "DELETE FROM houses WHERE id = ?", houseID)
+	if err != nil {
+		return err
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if changed == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (repository *Repository) ListPendingHouseReviews(ctx context.Context) ([]domain.HouseReview, error) {
 	rows, err := repository.db.QueryContext(ctx, `
 		SELECT h.id, h.landlord_id, h.title, h.description, h.city, h.district, h.address,

@@ -76,6 +76,10 @@ type HouseRepository interface {
 	ListHouses(context.Context, HouseFilter) ([]House, error)
 	GetHouse(context.Context, int64) (House, error)
 	CreateHouse(context.Context, *House) error
+	ListOwnedHouses(context.Context, int64) ([]House, error)
+	UpdateHouse(context.Context, *House) error
+	UpdateHouseStatus(context.Context, int64, string) error
+	DeleteHouse(context.Context, int64) error
 	ListPendingHouseReviews(context.Context) ([]HouseReview, error)
 	ReviewHouse(context.Context, int64, bool) error
 	AddFavorite(context.Context, Favorite) error
