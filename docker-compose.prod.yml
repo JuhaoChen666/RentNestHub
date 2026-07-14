@@ -1,0 +1,20 @@
+services:
+  mysql:
+    ports: !reset []
+    mem_limit: 512m
+
+  redis:
+    ports: !reset []
+    mem_limit: 128m
+
+  mailpit:
+    ports: !reset []
+    mem_limit: 128m
+
+  api:
+    mem_limit: 256m
+
+  web:
+    build:
+      dockerfile: Dockerfile.production
+    mem_limit: 128m
