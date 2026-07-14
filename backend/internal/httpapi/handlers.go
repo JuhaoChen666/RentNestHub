@@ -78,6 +78,15 @@ func (api *API) getHouse(writer http.ResponseWriter, request *http.Request) {
 }
 
 func (api *API) createHouse(writer http.ResponseWriter, request *http.Request) {
+	user, ok := api.currentUser(request.Context(), request)
+	if !ok {
+		writeError(writer, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	if user.Role != "admin" && user.Role != "landlord" {
+		writeError(writer, http.StatusForbidden, "only landlords can publish houses")
+		return
+	}
 	request.Body = http.MaxBytesReader(writer, request.Body, maxUploadSize)
 	if err := request.ParseMultipartForm(maxUploadSize); err != nil {
 		writeError(writer, http.StatusBadRequest, "invalid form or upload exceeds 20 MB")
@@ -89,6 +98,8 @@ func (api *API) createHouse(writer http.ResponseWriter, request *http.Request) {
 		writeError(writer, http.StatusBadRequest, err.Error())
 		return
 	}
+	house.LandlordID = user.ID
+	house.Status = "draft"
 	house.ImageURLs, err = api.saveImages(request.MultipartForm.File["images"])
 	if err != nil {
 		writeError(writer, http.StatusBadRequest, err.Error())
@@ -99,6 +110,57 @@ func (api *API) createHouse(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 	writeJSON(writer, http.StatusCreated, house)
+}
+
+func (api *API) listPendingHouseReviews(writer http.ResponseWriter, request *http.Request) {
+	if !api.requireAdmin(writer, request) {
+		return
+	}
+	reviews, err := api.repository.ListPendingHouseReviews(request.Context())
+	if err != nil {
+		api.internalError(writer, request, err)
+		return
+	}
+	writeJSON(writer, http.StatusOK, map[string]any{"items": reviews})
+}
+
+func (api *API) reviewHouse(writer http.ResponseWriter, request *http.Request) {
+	if !api.requireAdmin(writer, request) {
+		return
+	}
+	houseID, err := strconv.ParseInt(request.PathValue("id"), 10, 64)
+	if err != nil || houseID <= 0 {
+		writeError(writer, http.StatusBadRequest, "invalid house id")
+		return
+	}
+	var input struct {
+		Approved bool `json:"approved"`
+	}
+	if err := decodeJSON(request, &input); err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := api.repository.ReviewHouse(request.Context(), houseID, input.Approved); errors.Is(err, mysqlrepo.ErrNotFound) {
+		writeError(writer, http.StatusNotFound, "pending house not found")
+		return
+	} else if err != nil {
+		api.internalError(writer, request, err)
+		return
+	}
+	writer.WriteHeader(http.StatusNoContent)
+}
+
+func (api *API) requireAdmin(writer http.ResponseWriter, request *http.Request) bool {
+	user, ok := api.currentUser(request.Context(), request)
+	if !ok {
+		writeError(writer, http.StatusUnauthorized, "authentication required")
+		return false
+	}
+	if user.Role != "admin" {
+		writeError(writer, http.StatusForbidden, "administrator access required")
+		return false
+	}
+	return true
 }
 
 func (api *API) recommend(writer http.ResponseWriter, request *http.Request) {
@@ -171,20 +233,56 @@ func (api *API) removeFavorite(writer http.ResponseWriter, request *http.Request
 }
 
 func (api *API) createMessage(writer http.ResponseWriter, request *http.Request) {
-	var message domain.Message
-	if err := decodeJSON(request, &message); err != nil {
+	var input struct {
+		HouseID     int64  `json:"houseId"`
+		RecipientID int64  `json:"recipientId"`
+		Content     string `json:"content"`
+	}
+	if err := decodeJSON(request, &input); err != nil {
 		writeError(writer, http.StatusBadRequest, err.Error())
 		return
 	}
-	message.Content = strings.TrimSpace(message.Content)
-	if message.HouseID <= 0 || message.SenderID <= 0 || message.Content == "" {
-		writeError(writer, http.StatusBadRequest, "houseId, senderId, and content are required")
+	user, ok := api.currentUser(request.Context(), request)
+	if !ok {
+		writeError(writer, http.StatusUnauthorized, "authentication required")
 		return
 	}
-	if len([]rune(message.Content)) > 1000 {
+	content := strings.TrimSpace(input.Content)
+	if input.HouseID <= 0 || content == "" {
+		writeError(writer, http.StatusBadRequest, "houseId and content are required")
+		return
+	}
+	if len([]rune(content)) > 1000 {
 		writeError(writer, http.StatusBadRequest, "message cannot exceed 1000 characters")
 		return
 	}
+	house, err := api.repository.GetHouse(request.Context(), input.HouseID)
+	if errors.Is(err, mysqlrepo.ErrNotFound) {
+		writeError(writer, http.StatusNotFound, "house not found")
+		return
+	}
+	if err != nil {
+		api.internalError(writer, request, err)
+		return
+	}
+	recipientID := house.LandlordID
+	if user.ID == house.LandlordID {
+		recipientID = input.RecipientID
+		if recipientID <= 0 || recipientID == user.ID {
+			writeError(writer, http.StatusBadRequest, "recipientId is required when replying")
+			return
+		}
+		exists, err := api.repository.ConversationExists(request.Context(), house.ID, user.ID, recipientID)
+		if err != nil {
+			api.internalError(writer, request, err)
+			return
+		}
+		if !exists {
+			writeError(writer, http.StatusForbidden, "recipient is not part of this inquiry")
+			return
+		}
+	}
+	message := domain.Message{HouseID: house.ID, Sender: user, Recipient: domain.User{ID: recipientID}, Content: content}
 	if err := api.repository.CreateMessage(request.Context(), &message); err != nil {
 		api.internalError(writer, request, err)
 		return
@@ -193,12 +291,12 @@ func (api *API) createMessage(writer http.ResponseWriter, request *http.Request)
 }
 
 func (api *API) listMessages(writer http.ResponseWriter, request *http.Request) {
-	senderID, err := strconv.ParseInt(request.PathValue("senderId"), 10, 64)
-	if err != nil || senderID <= 0 {
-		writeError(writer, http.StatusBadRequest, "invalid sender id")
+	user, ok := api.currentUser(request.Context(), request)
+	if !ok {
+		writeError(writer, http.StatusUnauthorized, "authentication required")
 		return
 	}
-	messages, err := api.repository.ListMessages(request.Context(), senderID)
+	messages, err := api.repository.ListMessages(request.Context(), user.ID)
 	if err != nil {
 		api.internalError(writer, request, err)
 		return
@@ -208,14 +306,12 @@ func (api *API) listMessages(writer http.ResponseWriter, request *http.Request) 
 
 func houseFromForm(form *multipart.Form) (domain.House, error) {
 	value := form.Value
-	landlordID, landlordErr := parsePositiveInt64(value, "landlordId")
 	monthlyRent, rentErr := parseBoundedInt(value, "monthlyRent", 1, 200000)
 	bedrooms, bedroomsErr := parseBoundedInt(value, "bedrooms", 1, 20)
 	bathrooms, bathroomsErr := parseBoundedInt(value, "bathrooms", 1, 20)
 	areaSqm, areaErr := parseBoundedFloat(value, "areaSqm", 1, 2000)
 
 	house := domain.House{
-		LandlordID:  landlordID,
 		Title:       strings.TrimSpace(first(value["title"])),
 		Description: strings.TrimSpace(first(value["description"])),
 		City:        strings.TrimSpace(first(value["city"])),
@@ -226,11 +322,9 @@ func houseFromForm(form *multipart.Form) (domain.House, error) {
 		Bathrooms:   bathrooms,
 		AreaSqm:     areaSqm,
 		Amenities:   splitCSV(first(value["amenities"])),
-		Status:      "active",
 	}
 
 	var validationErrors []string
-	validationErrors = append(validationErrors, landlordErr...)
 	validationErrors = append(validationErrors, rentErr...)
 	validationErrors = append(validationErrors, bedroomsErr...)
 	validationErrors = append(validationErrors, bathroomsErr...)

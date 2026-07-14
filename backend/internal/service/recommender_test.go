@@ -45,6 +45,14 @@ func (fakeRepository) CreateHouse(context.Context, *domain.House) error {
 	return nil
 }
 
+func (fakeRepository) ListPendingHouseReviews(context.Context) ([]domain.HouseReview, error) {
+	return nil, nil
+}
+
+func (fakeRepository) ReviewHouse(context.Context, int64, bool) error {
+	return nil
+}
+
 func (fakeRepository) AddFavorite(context.Context, domain.Favorite) error {
 	return nil
 }
@@ -63,6 +71,10 @@ func (fakeRepository) CreateMessage(context.Context, *domain.Message) error {
 
 func (fakeRepository) ListMessages(context.Context, int64) ([]domain.Message, error) {
 	return nil, nil
+}
+
+func (fakeRepository) ConversationExists(context.Context, int64, int64, int64) (bool, error) {
+	return false, nil
 }
 
 func (fakeRepository) Close() error {

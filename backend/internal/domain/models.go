@@ -61,20 +61,29 @@ type Message struct {
 	ID         int64     `json:"id"`
 	HouseID    int64     `json:"houseId"`
 	HouseTitle string    `json:"houseTitle"`
-	SenderID   int64     `json:"senderId"`
+	Sender     User      `json:"sender"`
+	Recipient  User      `json:"recipient"`
 	Content    string    `json:"content"`
 	CreatedAt  time.Time `json:"createdAt"`
+}
+
+type HouseReview struct {
+	House     House `json:"house"`
+	Publisher User  `json:"publisher"`
 }
 
 type HouseRepository interface {
 	ListHouses(context.Context, HouseFilter) ([]House, error)
 	GetHouse(context.Context, int64) (House, error)
 	CreateHouse(context.Context, *House) error
+	ListPendingHouseReviews(context.Context) ([]HouseReview, error)
+	ReviewHouse(context.Context, int64, bool) error
 	AddFavorite(context.Context, Favorite) error
 	RemoveFavorite(context.Context, Favorite) error
 	ListFavoriteHouses(context.Context, int64) ([]House, error)
 	CreateMessage(context.Context, *Message) error
 	ListMessages(context.Context, int64) ([]Message, error)
+	ConversationExists(context.Context, int64, int64, int64) (bool, error)
 	Close() error
 }
 

@@ -12,7 +12,9 @@ import (
 
 	"github.com/JuhaoChen666/RentNestHub/backend/internal/config"
 	"github.com/JuhaoChen666/RentNestHub/backend/internal/httpapi"
+	"github.com/JuhaoChen666/RentNestHub/backend/internal/notification"
 	"github.com/JuhaoChen666/RentNestHub/backend/internal/repository/mysqlrepo"
+	"github.com/JuhaoChen666/RentNestHub/backend/internal/repository/rediscache"
 	"github.com/JuhaoChen666/RentNestHub/backend/internal/service"
 )
 
@@ -26,17 +28,30 @@ func main() {
 		os.Exit(1)
 	}
 	defer repository.Close()
+	resetCodes := rediscache.NewPasswordResetStore(cfg.RedisAddr, cfg.RedisPassword)
+	defer resetCodes.Close()
 
 	recommender := service.NewRecommenderWithProvider(
 		repository,
 		service.NewRecommendationProvider(service.AIProviderConfig{
-			URL:    cfg.AIAPIURL,
-			APIKey: cfg.AIAPIKey,
-			Model:  cfg.AIModel,
+			URL:             cfg.AIAPIURL,
+			APIKey:          cfg.AIAPIKey,
+			Model:           cfg.AIModel,
+			Thinking:        cfg.AIThinking,
+			ReasoningEffort: cfg.AIReasoning,
 		}),
 	)
 	handler := httpapi.New(httpapi.Dependencies{
-		Repository:    repository,
+		Repository: repository,
+		Accounts:   repository,
+		ResetCodes: resetCodes,
+		Mailer: notification.NewPasswordResetMailer(notification.SMTPConfig{
+			Host:     cfg.SMTPHost,
+			Port:     cfg.SMTPPort,
+			Username: cfg.SMTPUsername,
+			Password: cfg.SMTPPassword,
+			From:     cfg.MailFrom,
+		}),
 		Recommender:   recommender,
 		UploadDir:     cfg.UploadDir,
 		PublicBaseURL: cfg.PublicBaseURL,
