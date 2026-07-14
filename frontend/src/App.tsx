@@ -189,6 +189,15 @@ function App() {
     [activeView, favoriteHouses, houses, ownedHouses, recommendations],
   );
 
+  useEffect(() => {
+    if (!session || activeView !== "messages") return;
+    const refresh = () => {
+      void listInquiryMessages().then(setInquiryMessages).catch(() => undefined);
+    };
+    const timer = window.setInterval(refresh, 5000);
+    return () => window.clearInterval(timer);
+  }, [activeView, session]);
+
   if (checkingSession) {
     return <div className="auth-loading">正在验证登录状态...</div>;
   }
@@ -265,15 +274,6 @@ function App() {
       setLoading(false);
     }
   }
-
-  useEffect(() => {
-    if (!session || activeView !== "messages") return;
-    const refresh = () => {
-      void listInquiryMessages().then(setInquiryMessages).catch(() => undefined);
-    };
-    const timer = window.setInterval(refresh, 5000);
-    return () => window.clearInterval(timer);
-  }, [activeView, session]);
 
   async function toggleFavorite(houseId: number) {
     if (favorites.has(houseId)) {
@@ -619,15 +619,18 @@ function Header({
         <a className={activeView === "messages" ? "active" : undefined} href="#messages" onClick={(event) => { event.preventDefault(); onMessages(); }}>消息</a>
       </nav>
       <div className="topbar-actions">
-        <Button className="secondary-button" onClick={onOwned} type="button" variant="secondary">我的房源</Button>
-        <Button className="secondary-button" onClick={onPublish} type="button" variant="secondary">
+        <Button aria-label="我的房源" className="secondary-button mobile-action" onClick={onOwned} title="我的房源" type="button" variant="secondary">
+          <Building2 size={17} />
+          <span>我的房源</span>
+        </Button>
+        <Button aria-label="发布房源" className="secondary-button mobile-action" onClick={onPublish} title="发布房源" type="button" variant="secondary">
           <Plus size={17} />
-          发布房源
+          <span>发布房源</span>
         </Button>
         {user.role === "admin" && (
-          <Button className="secondary-button" onClick={onReviews} type="button" variant="secondary">
+          <Button aria-label="审核房源" className="secondary-button mobile-action" onClick={onReviews} title="审核房源" type="button" variant="secondary">
             <ClipboardCheck size={17} />
-            审核房源
+            <span>审核房源</span>
           </Button>
         )}
         <Button className="avatar" aria-label="打开个人主页" onClick={onProfile} type="button" size="icon">
